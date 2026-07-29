@@ -1,8 +1,12 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
   "/dashboard/debtors/page": "app/dashboard/debtors/page.js",
+  "/dashboard/inventory/page": "app/dashboard/inventory/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/sales/page": "app/dashboard/sales/page.js",
   "/dashboard/settings/page": "app/dashboard/settings/page.js",
   "/dashboard/products/page": "app/dashboard/products/page.js",
-  "/dashboard/inventory/page": "app/dashboard/inventory/page.js",
-  "/dashboard/sales/page": "app/dashboard/sales/page.js",
-  "/dashboard/page": "app/dashboard/page.js"
+  "/dashboard/users/page": "app/dashboard/users/page.js"
 }
