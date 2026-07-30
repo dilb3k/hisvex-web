@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
-import { Package, Plus, Search, Pencil, Lock, Unlock, AlertTriangle, X } from 'lucide-react'
+import { Package, Plus, Search, Pencil, Lock, Unlock, AlertTriangle, Trash2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { Product } from '@/lib/types'
 import {
@@ -573,7 +573,7 @@ export default function ProductsPage() {
                       cursor: 'pointer',
                     }}
                   >
-                    <X size={16} color="#fff" />
+                    <Trash2 size={16} color="#fff" />
                   </button>
                 )}
                 <button
