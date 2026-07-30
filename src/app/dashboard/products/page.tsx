@@ -273,7 +273,7 @@ export default function ProductsPage() {
       for (const code of barcodes) {
         const dup = products.find((p) => p.barcodes?.includes(code) && p._id !== editingProduct?._id)
         if (dup) {
-          alert(`"${dup.name}" allaqachon bu (${code}) barcode dan foydalanmoqda`)
+          console.error(`Duplicate barcode: "${dup.name}" already uses code ${code}`)
           return false
         }
       }
@@ -300,7 +300,7 @@ export default function ProductsPage() {
       await loadProducts(true)
       return true
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t('error'))
+      console.error('Product save error:', err)
       return false
     } finally {
       setIsSubmitting(false)
@@ -315,12 +315,12 @@ export default function ProductsPage() {
 
   const handleConfirmPin = () => {
     if (pinInput === blockCode) { setShowPinVerify(false); setPinInput(''); execSave() }
-    else { alert("Blok kod noto'g'ri"); setPinInput('') }
+    else { console.error('Block code mismatch'); setPinInput('') }
   }
 
   const handleSetBlockCode = () => {
-    if (blockInput.length !== 4 || !/^\d{4}$/.test(blockInput)) { alert('4 xonali raqam kiriting'); return }
-    if (!blockCode && blockInput !== blockInputConfirm) { alert('Kodlar bir xil emas'); return }
+    if (blockInput.length !== 4 || !/^\d{4}$/.test(blockInput)) { console.error('Block code must be 4 digits'); return }
+    if (!blockCode && blockInput !== blockInputConfirm) { console.error('Block codes do not match'); return }
     setBlockCodeState(blockInput)
     const u = useAuthStore.getState().user
     if (u) useAuthStore.getState().setUser({ ...u, blockCode: blockInput })
@@ -337,14 +337,14 @@ export default function ProductsPage() {
   const handleRestock = async () => {
     if (!restockProduct || !restockQty) return
     const qtyToAdd = parseInt(restockQty.replace(/\D/g, ''), 10)
-    if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { alert('To\'g\'ri miqdor kiriting'); return }
+    if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { console.error('Invalid restock quantity'); return }
     setIsRestocking(true)
     try {
       await productsApi.update(restockProduct._id, { quantity: (restockProduct.quantity ?? 0) + qtyToAdd })
       closeRestockModal()
       await loadProducts(true)
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t('error'))
+      console.error('Restock error:', err)
     } finally {
       setIsRestocking(false)
     }
@@ -359,7 +359,7 @@ export default function ProductsPage() {
       closeProductModal()
       await loadProducts(true)
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t('error'))
+      console.error('Delete error:', err)
     } finally {
       setIsDeleting(false)
     }

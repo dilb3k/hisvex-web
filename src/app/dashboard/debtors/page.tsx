@@ -122,9 +122,7 @@ export default function DebtorsPage() {
       setShowDeleteConfirm(false)
       setSelectedDebtor(null)
       loadDebtors()
-    } catch {
-      alert(t('error') || 'Xatolik yuz berdi')
-    }
+    } catch (err) { console.error('Debtor delete error:', err) }
   }
 
   const handleAdjust = async (type: 'add' | 'subtract') => {

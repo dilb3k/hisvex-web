@@ -38,9 +38,28 @@ function cacheKey(config: { method?: string; url?: string; params?: any }) {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+let retryCount = 0
+const MAX_RETRIES = 2
+
+api.interceptors.response.use(
+  (response) => {
+    retryCount = 0
+    return response
+  },
+  async (error) => {
+    if (error.code === 'ECONNABORTED' && retryCount < MAX_RETRIES) {
+      retryCount++
+      console.log(`API timeout, retrying (${retryCount}/${MAX_RETRIES})...`)
+      return api.request(error.config)
+    }
+    retryCount = 0
+    return Promise.reject(error)
+  }
+)
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (apiToken) {

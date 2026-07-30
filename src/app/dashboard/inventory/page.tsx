@@ -150,7 +150,7 @@ export default function InventoryPage() {
       ))
       setSaved(true)
       setTimeout(() => closeModal(), 700)
-    } catch { alert(t('error') || 'Xatolik yuz berdi') } finally { setSaving(false) }
+    } catch (err) { console.error('Inventory save error:', err) } finally { setSaving(false) }
   }
 
   const preview = useMemo(() => {
