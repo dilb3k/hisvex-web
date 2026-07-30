@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
-import { productsApi, resolveImageUrl, getDeviceId } from '@/lib/api'
+import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
 import { Package, Plus, Search, Pencil, Lock, Unlock, AlertTriangle, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { Product } from '@/lib/types'
@@ -297,6 +297,7 @@ export default function ProductsPage() {
         await productsApi.create(payload)
       }
       closeProductModal()
+      clearApiCache()
       await loadProducts(true)
       return true
     } catch (err: unknown) {
@@ -342,6 +343,7 @@ export default function ProductsPage() {
     try {
       await productsApi.update(restockProduct._id, { quantity: (restockProduct.quantity ?? 0) + qtyToAdd })
       closeRestockModal()
+      clearApiCache()
       await loadProducts(true)
     } catch (err: unknown) {
       console.error('Restock error:', err)
@@ -357,6 +359,7 @@ export default function ProductsPage() {
       await productsApi.delete(deleteTarget._id)
       setShowDeleteModal(false); setDeleteTarget(null)
       closeProductModal()
+      clearApiCache()
       await loadProducts(true)
     } catch (err: unknown) {
       console.error('Delete error:', err)

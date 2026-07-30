@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/lib/appStore'
-import { inventoryApi, resolveImageUrl } from '@/lib/api'
+import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import dayjs from 'dayjs'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
@@ -149,8 +149,9 @@ export default function SalesPage() {
       }))
       const today = getBusinessDate()
       await inventoryApi.recordSales(today, lines)
+      clearApiCache()
       await loadInventory()
-      refreshAll()
+      await refreshAll()
       setCart({})
       setSuccess(t('salesSuccess'))
       setTimeout(() => setSuccess(null), 3000)

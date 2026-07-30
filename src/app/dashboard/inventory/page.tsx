@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { inventoryApi, resolveImageUrl } from '@/lib/api'
+import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import dayjs from 'dayjs'
 import { ChevronLeft, ChevronRight, Package, Search } from 'lucide-react'
@@ -75,6 +75,7 @@ export default function InventoryPage() {
   const isFutureDate = dayjs(selectedDate).isAfter(dayjs(), 'day')
   const isEditable = !isPastDate && !isFutureDate
   const refreshKey = useAppStore((s) => s.refreshKey)
+  const refreshAll = useAppStore((s) => s.refreshAll)
 
   useEffect(() => {
     if (isFutureDate) { setItems([]); setLoading(false); return }
@@ -143,11 +144,13 @@ export default function InventoryPage() {
       const newQty = parseWholeNumber(currentQtyInput)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
       await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
+      clearApiCache()
       setItems((prev) => prev.map((item) =>
         (item.productId === productId || item.product?._id === productId)
           ? { ...item, currentQuantity: newQty }
           : item
       ))
+      await refreshAll()
       setSaved(true)
       setTimeout(() => closeModal(), 700)
     } catch (err) { console.error('Inventory save error:', err) } finally { setSaving(false) }
