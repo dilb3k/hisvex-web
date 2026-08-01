@@ -10,7 +10,7 @@ interface InventoryResponse {
   summary?: { totalStart: number; totalCurrent: number; totalSold: number; totalRevenue: number; totalProfit: number }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://comp-bar-server.onrender.com/api'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hisvex-prod-api.onrender.com/api'
 
 let apiToken: string | null = null
 let apiRefreshToken: string | null = null

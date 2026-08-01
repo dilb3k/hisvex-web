@@ -7,13 +7,14 @@ import { useAuthStore } from '@/lib/authStore'
 export default function RootPage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const isLoading = useAuthStore((s) => s.isLoading)
+  const role = useAuthStore((s) => s.user?.role)
   const router = useRouter()
 
   useEffect(() => {
     if (!isLoading) {
-      router.replace(isAuthenticated ? '/dashboard' : '/login')
+      router.replace(isAuthenticated ? (role === 'superAdmin' ? '/dashboard/users' : '/dashboard') : '/login')
     }
-  }, [isAuthenticated, isLoading, router])
+  }, [isAuthenticated, isLoading, role, router])
 
   return (
     <div style={{

@@ -12,22 +12,22 @@ import { t } from '@/lib/i18n'
 import { useState } from 'react'
 
 const sidebarNavItems = [
-  { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard/products', icon: Package, labelKey: 'products' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard/debtors', icon: Users, labelKey: 'debtors' as const, roles: ['superAdmin', 'admin'] },
+  { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['admin'] },
+  { to: '/dashboard/products', icon: Package, labelKey: 'products' as const, roles: ['admin'] },
+  { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['admin'] },
+  { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['admin'] },
+  { to: '/dashboard/debtors', icon: Users, labelKey: 'debtors' as const, roles: ['admin'] },
   { to: '/dashboard/users', icon: Shield, labelKey: 'users' as const, roles: ['superAdmin'] },
-  { to: '/dashboard/settings', icon: Settings, labelKey: 'settings' as const, roles: ['superAdmin', 'admin'] },
+  { to: '/dashboard/settings', icon: Settings, labelKey: 'settings' as const, roles: ['admin'] },
 ]
 
 const mobileTabItems = [
-  { to: '/dashboard/products', icon: Package, labelKey: 'products' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['superAdmin', 'admin'] },
-  { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['superAdmin', 'admin'] },
+  { to: '/dashboard/products', icon: Package, labelKey: 'products' as const, roles: ['admin'] },
+  { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['admin'] },
+  { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['admin'] },
+  { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['admin'] },
   { to: '/dashboard/users', icon: Users, labelKey: 'users' as const, roles: ['superAdmin'] },
-  { to: '/dashboard/debtors', icon: HandCoins, labelKey: 'debtors' as const, roles: ['superAdmin', 'admin'] },
+  { to: '/dashboard/debtors', icon: HandCoins, labelKey: 'debtors' as const, roles: ['admin'] },
 ]
 
 const iconBtn: React.CSSProperties = {
@@ -170,9 +170,11 @@ export function Sidebar() {
           <button onClick={handleRefresh} className="mobile-header-btn" title={t('refresh')}>
             <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           </button>
-          <Link href="/dashboard/settings" className="mobile-header-btn" title={t('settings')}>
-            <Settings size={18} />
-          </Link>
+          {user?.role !== 'superAdmin' && (
+            <Link href="/dashboard/settings" className="mobile-header-btn" title={t('settings')}>
+              <Settings size={18} />
+            </Link>
+          )}
         </div>
       </header>
 

@@ -62,7 +62,7 @@ export default function LoginPage() {
         ? await authApi.login(username.trim(), password)
         : await authApi.register(username.trim(), password, phoneNumber.replace(/\D/g, '') || undefined)
       setAuth(data.token, data.refreshToken, data.user)
-      router.replace('/dashboard')
+      router.replace(data.user.role === 'superAdmin' ? '/dashboard/users' : '/dashboard')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : (isLoginMode ? t('loginError') : t('registerError'))
       setError(message)
