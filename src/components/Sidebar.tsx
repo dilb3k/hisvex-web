@@ -92,9 +92,7 @@ export function Sidebar() {
           ) : (
             <>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>H</span>
-                </div>
+                <img src="/logo.png" alt="Hisvex" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                 <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
               </div>
               <button onClick={handleRefresh} style={{ ...iconBtn, width: 34, height: 34 }} title={t('refresh')}>

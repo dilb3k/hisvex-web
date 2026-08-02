@@ -49,15 +49,11 @@ export function HydrateProvider({ children }: { children: React.ReactNode }) {
           top: '-150px', right: '-150px',
         }} />
         <div style={{ position: 'relative', textAlign: 'center', zIndex: 1 }}>
-          <div style={{
-            width: 80, height: 80, borderRadius: 20,
-            background: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          <img src="/logo.png" alt="Hisvex" style={{
+            width: 80, height: 80, borderRadius: '50%', objectFit: 'cover',
             margin: '0 auto 20px',
             boxShadow: '0 8px 40px rgba(124,58,237,0.4)',
-          }}>
-            <span style={{ fontSize: 38, fontWeight: 800, color: '#fff' }}>H</span>
-          </div>
+          }} />
           <h1 style={{
             fontSize: 32, fontWeight: 800, marginBottom: 12,
             background: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
