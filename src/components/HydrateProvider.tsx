@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useAuthStore } from '@/lib/authStore'
-import { setUnauthorizedHandler } from '@/lib/api'
+import { setUnauthorizedHandler, setTokensRefreshedHandler } from '@/lib/api'
 import { setLanguage } from '@/lib/i18n'
 import { initBusinessDay } from '@/lib/businessDay'
 
@@ -27,7 +27,13 @@ export function HydrateProvider({ children }: { children: React.ReactNode }) {
       logout()
       window.location.href = '/login'
     })
-    return () => setUnauthorizedHandler(null)
+    setTokensRefreshedHandler((token, refreshToken) => {
+      useAuthStore.setState({ token, refreshToken })
+    })
+    return () => {
+      setUnauthorizedHandler(null)
+      setTokensRefreshedHandler(null)
+    }
   }, [logout])
 
   if (isLoading) {
