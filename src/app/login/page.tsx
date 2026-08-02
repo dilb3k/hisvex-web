@@ -111,32 +111,41 @@ export default function LoginPage() {
         background: 'radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 70%)',
         bottom: '-150px', left: '-150px', zIndex: 0,
       }} />
+      <div style={{
+        position: 'fixed', width: 720, height: 720, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(124,58,237,0.07) 0%, rgba(124,58,237,0.02) 55%, transparent 70%)',
+        top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 0,
+      }} />
 
-      <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+      <div style={{ width: '100%', maxWidth: 400, position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: -32,
+            width: 88, height: 88, borderRadius: 22,
+            overflow: 'hidden', margin: '0 auto 22px',
+            boxShadow: '0 12px 40px rgba(124,58,237,0.35)',
           }}>
             <Image
               src="/logo.png" alt="Hisvex"
-              width={180} height={180}
-              style={{ objectFit: 'contain' }}
+              width={88} height={88}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               priority
             />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: 0, marginBottom: 8 }}>
-            <span style={{ fontSize: 40, fontWeight: 800, color: C.primary, letterSpacing: -0.5 }}>His</span>
-            <span style={{ fontSize: 40, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>vex</span>
-          </div>
-          <p style={{ margin: 0, fontSize: 15, color: C.accentDim, letterSpacing: 0.5 }}>
+          <h1 style={{
+            margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
+            background: 'linear-gradient(135deg, #A78BFA 0%, #7C3AED 60%, #6D28D9 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          }}>
+            Hisvex
+          </h1>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: C.textSecondary, letterSpacing: 0.4 }}>
             {isLoginMode ? t('signInToSystem') : t('createAccount')}
           </p>
         </div>
 
         <div style={{
           borderRadius: 20, border: `1px solid ${C.border}`,
-          background: 'rgba(255,255,255,0.03)', padding: 20,
+          background: 'rgba(255,255,255,0.03)', padding: 24,
         }}>
           <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
             <button
