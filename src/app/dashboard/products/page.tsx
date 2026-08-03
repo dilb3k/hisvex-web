@@ -145,6 +145,7 @@ export default function ProductsPage() {
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [blockInput, setBlockInput] = useState('')
   const [blockInputConfirm, setBlockInputConfirm] = useState('')
+  const [blockCurrent, setBlockCurrent] = useState('')
   const [blockCode, setBlockCodeState] = useState<string | null>(blockCodeFromUser)
 
   const [showPinVerify, setShowPinVerify] = useState(false)
@@ -322,17 +323,19 @@ export default function ProductsPage() {
   const handleSetBlockCode = () => {
     if (blockInput.length !== 4 || !/^\d{4}$/.test(blockInput)) { console.error('Block code must be 4 digits'); return }
     if (!blockCode && blockInput !== blockInputConfirm) { console.error('Block codes do not match'); return }
+    if (blockCode && blockCurrent !== blockCode) { console.error('Current block code mismatch'); return }
     setBlockCodeState(blockInput)
     const u = useAuthStore.getState().user
     if (u) useAuthStore.getState().setUser({ ...u, blockCode: blockInput })
-    setShowBlockModal(false); setBlockInput(''); setBlockInputConfirm('')
+    setShowBlockModal(false); setBlockInput(''); setBlockInputConfirm(''); setBlockCurrent('')
   }
 
   const handleRemoveBlockCode = () => {
+    if (blockCurrent !== blockCode) { console.error('Current block code mismatch'); return }
     setBlockCodeState(null)
     const u = useAuthStore.getState().user
     if (u) { const { blockCode: _, ...rest } = u; useAuthStore.getState().setUser(rest as typeof u) }
-    setShowBlockModal(false); setBlockInput(''); setBlockInputConfirm('')
+    setShowBlockModal(false); setBlockInput(''); setBlockInputConfirm(''); setBlockCurrent('')
   }
 
   const handleRestock = async () => {
@@ -389,7 +392,7 @@ export default function ProductsPage() {
             />
           </div>
           <button
-            onClick={() => { setBlockInput(''); setBlockInputConfirm(''); setShowBlockModal(true) }}
+            onClick={() => { setBlockCurrent(''); setBlockInput(''); setBlockInputConfirm(''); setShowBlockModal(true) }}
             style={{
               ...btnIcon,
               background: blockCode ? 'var(--color-warning)' : 'var(--color-surface)',
@@ -985,18 +988,26 @@ export default function ProductsPage() {
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
               {blockCode ? "Yangi 4 xonali raqam kiriting" : "Mahsulotni tahrirlashda himoya kodi (4 xonali)"}
             </div>
+            {blockCode && (
+              <input
+                type="password" inputMode="numeric" placeholder="Joriy kod" maxLength={4}
+                value={blockCurrent}
+                onChange={(e) => setBlockCurrent(e.target.value.replace(/\D/g, ''))}
+                style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 10 }}
+              />
+            )}
             <input
               type="password" inputMode="numeric" placeholder="0000" maxLength={4}
               value={blockInput}
               onChange={(e) => setBlockInput(e.target.value.replace(/\D/g, ''))}
-              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 10 }}
+              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 10 }}
             />
             {!blockCode && (
               <input
                 type="password" inputMode="numeric" placeholder="Kodni takrorlang" maxLength={4}
                 value={blockInputConfirm}
                 onChange={(e) => setBlockInputConfirm(e.target.value.replace(/\D/g, ''))}
-                style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 10 }}
+                style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 10 }}
               />
             )}
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
@@ -1035,7 +1046,7 @@ export default function ProductsPage() {
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
               autoFocus
-              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 16 }}
+              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 16 }}
             />
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowPinVerify(false)} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>

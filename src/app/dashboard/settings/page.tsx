@@ -23,6 +23,8 @@ import {
   Minus,
   Plus,
   Shield,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import {
   getBusinessDayStartHour,
@@ -118,6 +120,59 @@ export default function SettingsPage() {
       setTogglingAdminId(null)
     }
   }, [togglingAdminId, showToast])
+
+  const blockCode = user?.blockCode ?? null
+  const [showBlockModal, setShowBlockModal] = useState(false)
+  const [blockCurrent, setBlockCurrent] = useState('')
+  const [blockNew, setBlockNew] = useState('')
+  const [blockNewConfirm, setBlockNewConfirm] = useState('')
+  const [isBlockBusy, setIsBlockBusy] = useState(false)
+
+  const openBlockModal = useCallback(() => {
+    setBlockCurrent('')
+    setBlockNew('')
+    setBlockNewConfirm('')
+    setShowBlockModal(true)
+  }, [])
+
+  const persistBlockCode = useCallback((code: string | null) => {
+    const u = useAuthStore.getState().user
+    if (!u) return
+    if (code) {
+      useAuthStore.getState().setUser({ ...u, blockCode: code })
+    } else {
+      const { blockCode: _, ...rest } = u
+      useAuthStore.getState().setUser(rest as typeof u)
+    }
+  }, [])
+
+  const handleSaveBlock = useCallback(() => {
+    if (blockNew.length !== 4 || !/^\d{4}$/.test(blockNew)) {
+      showToast(t('blockCodeInvalid'), 'error')
+      return
+    }
+    if (blockNew !== blockNewConfirm) {
+      showToast(t('blockCodeMismatch'), 'error')
+      return
+    }
+    if (blockCode && blockCurrent !== blockCode) {
+      showToast(t('blockCodeWrong'), 'error')
+      return
+    }
+    persistBlockCode(blockNew)
+    setShowBlockModal(false)
+    showToast(t('blockCodeSaved'), 'success')
+  }, [blockNew, blockNewConfirm, blockCode, blockCurrent, persistBlockCode, showToast])
+
+  const handleRemoveBlock = useCallback(() => {
+    if (blockCurrent !== blockCode) {
+      showToast(t('blockCodeWrong'), 'error')
+      return
+    }
+    persistBlockCode(null)
+    setShowBlockModal(false)
+    showToast(t('blockCodeRemoved'), 'success')
+  }, [blockCurrent, blockCode, persistBlockCode, showToast])
 
   const userTier = user?.tier ?? 'tekin'
   const pendingHour = getPendingBusinessDayStartHour()
@@ -621,7 +676,42 @@ export default function SettingsPage() {
                 })}
               </div>
 
-              {/* Support */}
+      {/* Block Code */}
+      <div style={sectionStyle}>
+        <div style={sectionHeaderStyle}>
+          <Lock size={16} />
+          {t('blockCode')}
+        </div>
+        <button
+          onClick={openBlockModal}
+          style={{
+            ...cardStyle,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            width: '100%',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: blockCode ? 'rgba(245,158,11,0.12)' : 'var(--color-bg)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Lock size={20} style={{ color: blockCode ? 'var(--color-warning)' : 'var(--color-text-secondary)' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{t('blockCode')}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+              {blockCode ? t('blockCodeActive') : t('blockCodeInactive')}
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--color-text-secondary)' }} />
+        </button>
+      </div>
+
+      {/* Support */}
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
                   {t('contactAdminSub')}
@@ -814,6 +904,151 @@ export default function SettingsPage() {
               >
                 {t('save')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Block Code Modal */}
+      {showBlockModal && (
+        <div onClick={() => setShowBlockModal(false)} style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.6)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', padding: 24,
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            width: '100%', maxWidth: 380,
+            background: 'var(--color-surface)', borderRadius: 16,
+            border: '1px solid var(--color-border)', overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '16px 20px', borderBottom: '1px solid var(--color-border)',
+            }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('blockCode')}</h3>
+              <button onClick={() => setShowBlockModal(false)} style={{
+                width: 32, height: 32, borderRadius: 8, border: 'none',
+                background: 'transparent', color: 'var(--color-text-secondary)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}><X size={20} /></button>
+            </div>
+
+            <div style={{ padding: 20 }}>
+              {blockCode && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
+                    {t('blockCodeCurrent')}
+                  </label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="0000"
+                    maxLength={4}
+                    value={blockCurrent}
+                    onChange={(e) => setBlockCurrent(e.target.value.replace(/\D/g, ''))}
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: 8,
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text)',
+                      fontSize: 20,
+                      textAlign: 'center',
+                      letterSpacing: 6,
+                      textIndent: 6,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  />
+                </div>
+              )}
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
+                  {blockCode ? t('blockCodeNew') : t('blockCodeSet')}
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  placeholder="0000"
+                  maxLength={4}
+                  value={blockNew}
+                  onChange={(e) => setBlockNew(e.target.value.replace(/\D/g, ''))}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    fontSize: 20,
+                    textAlign: 'center',
+                    letterSpacing: 6,
+                    textIndent: 6,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
+                  {t('blockCodeConfirm')}
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  placeholder="0000"
+                  maxLength={4}
+                  value={blockNewConfirm}
+                  onChange={(e) => setBlockNewConfirm(e.target.value.replace(/\D/g, ''))}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    fontSize: 20,
+                    textAlign: 'center',
+                    letterSpacing: 6,
+                    textIndent: 6,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                />
+              </div>
+
+              {!blockCode && (
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 16, lineHeight: 1.5 }}>
+                  {t('blockCodePurpose')}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                {blockCode && (
+                  <button
+                    onClick={handleRemoveBlock}
+                    disabled={isBlockBusy}
+                    style={{
+                      flex: 1, padding: '12px 0', borderRadius: 8, border: 'none',
+                      background: 'rgba(239,68,68,0.1)', color: 'var(--color-danger)',
+                      fontSize: 14, fontWeight: 600, cursor: isBlockBusy ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {t('blockCodeRemove')}
+                  </button>
+                )}
+                <button
+                  onClick={handleSaveBlock}
+                  disabled={isBlockBusy}
+                  style={{
+                    flex: 1, padding: '12px 0', borderRadius: 8, border: 'none',
+                    background: 'var(--color-primary)', color: '#fff',
+                    fontSize: 14, fontWeight: 600, cursor: isBlockBusy ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {t('save')}
+                </button>
+              </div>
             </div>
           </div>
         </div>
