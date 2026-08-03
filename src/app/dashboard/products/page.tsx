@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
+import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { Product } from '@/lib/types'
@@ -149,6 +150,7 @@ export default function ProductsPage() {
 
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -238,7 +240,15 @@ export default function ProductsPage() {
     e.target.value = ''
   }
 
-  const handleAddBarcode = () => { setShowBarcodeInput(true); setBarcodeInput('') }
+  const handleAddBarcode = () => { setShowBarcodeScanner(true) }
+  const handleManualBarcode = () => { setShowBarcodeScanner(false); setShowBarcodeInput(true); setBarcodeInput('') }
+  const handleScannerDetected = (code: string) => {
+    setForm((prev) => ({
+      ...prev,
+      barcodes: prev.barcodes.includes(code) ? prev.barcodes : [...prev.barcodes, code],
+    }))
+    setShowBarcodeScanner(false)
+  }
   const handleConfirmBarcode = () => {
     const code = barcodeInput.trim()
     if (!code) return
@@ -747,6 +757,20 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScannerModal
+        open={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onBarcodeDetected={handleScannerDetected}
+        onManualInput={handleManualBarcode}
+        conflictCheck={(code) => {
+          const dup = products.find(
+            (p) => p.barcodes?.includes(code) && p._id !== editingProduct?._id
+          )
+          return dup ? { conflictName: dup.name } : null
+        }}
+      />
 
       {/* Barcode Input Modal */}
       {showBarcodeInput && (
