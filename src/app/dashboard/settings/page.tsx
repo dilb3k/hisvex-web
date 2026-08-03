@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/authStore'
+import { useAppStore } from '@/lib/appStore'
+import { adminsApi } from '@/lib/api'
 import { t, getLanguage, setLanguage } from '@/lib/i18n'
 import type { Language } from '@/lib/i18n'
+import type { User as AdminUser } from '@/lib/types'
 import {
   User,
+  Users,
   Globe,
   Sun,
   Moon,
@@ -18,6 +22,7 @@ import {
   X,
   Minus,
   Plus,
+  Shield,
 } from 'lucide-react'
 import {
   getBusinessDayStartHour,
@@ -76,6 +81,43 @@ export default function SettingsPage() {
   const [showBusinessDay, setShowBusinessDay] = useState(false)
   const [showTariffs, setShowTariffs] = useState(false)
   const [editingHour, setEditingHour] = useState(getBusinessDayStartHour())
+
+  const showToast = useAppStore((s) => s.showToast)
+  const [admins, setAdmins] = useState<AdminUser[]>([])
+  const [adminsLoading, setAdminsLoading] = useState(false)
+  const [togglingAdminId, setTogglingAdminId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (user?.role !== 'superAdmin') return
+    let cancelled = false
+    ;(async () => {
+      setAdminsLoading(true)
+      try {
+        const { data } = await adminsApi.getAll()
+        if (!cancelled) setAdmins(data)
+      } catch {
+        // handled globally
+      } finally {
+        if (!cancelled) setAdminsLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user?.role])
+
+  const handleToggleAdmin = useCallback(async (admin: AdminUser) => {
+    if (togglingAdminId) return
+    setTogglingAdminId(admin._id)
+    const next = admin.isActive === false
+    try {
+      await adminsApi.update(admin._id, { isActive: next })
+      setAdmins((prev) => prev.map((a) => (a._id === admin._id ? { ...a, isActive: next } : a)))
+      showToast(next ? t('adminActivated') : t('adminDeactivated'), 'success')
+    } catch {
+      // handled globally
+    } finally {
+      setTogglingAdminId(null)
+    }
+  }, [togglingAdminId, showToast])
 
   const userTier = user?.tier ?? 'tekin'
   const pendingHour = getPendingBusinessDayStartHour()
@@ -215,6 +257,96 @@ export default function SettingsPage() {
               </div>
             ) : null}
           </div>
+        </div>
+      )}
+
+      {/* User Management (superadmin) */}
+      {user?.role === 'superAdmin' && (
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <Users size={16} />
+            {t('usersTitle')}
+          </div>
+          {adminsLoading ? (
+            <div style={{ ...cardStyle, display: 'flex', justifyContent: 'center', padding: 24 }}>
+              <span style={{
+                width: 18, height: 18,
+                border: '2px solid var(--color-border)',
+                borderTopColor: 'var(--color-primary)',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+            </div>
+          ) : (
+            admins.map((admin) => {
+              const isInactive = admin.isActive === false
+              const isSelf = admin._id === user._id
+              return (
+                <div key={admin._id} style={{
+                  ...cardStyle,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  opacity: isInactive ? 0.72 : 1,
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 20, flexShrink: 0,
+                    background: isInactive
+                      ? 'rgba(107,114,128,0.18)'
+                      : 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 15, fontWeight: 800,
+                  }}>
+                    {admin.username.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+                      fontSize: 14, fontWeight: 700, color: 'var(--color-text)',
+                    }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {admin.username}
+                      </span>
+                      {admin.role === 'superAdmin' && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '1px 8px', borderRadius: 6,
+                          fontSize: 11, fontWeight: 600,
+                          background: 'rgba(139,92,246,0.14)', color: '#8B5CF6',
+                          border: '1px solid rgba(139,92,246,0.3)',
+                        }}>
+                          <Shield size={11} />
+                          {t('superAdmin')}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                      {isInactive ? t('inactive') : t('active')}
+                    </div>
+                  </div>
+                  {!isSelf && (
+                    <button
+                      onClick={() => handleToggleAdmin(admin)}
+                      disabled={togglingAdminId === admin._id}
+                      style={{
+                        flexShrink: 0, padding: '8px 14px', borderRadius: 10,
+                        border: isInactive ? 'none' : '1.5px solid rgba(239,68,68,0.4)',
+                        background: isInactive
+                          ? 'linear-gradient(135deg, #10B981, #34D399)'
+                          : 'rgba(239,68,68,0.08)',
+                        color: isInactive ? '#fff' : 'var(--color-danger)',
+                        fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                        opacity: togglingAdminId === admin._id ? 0.55 : 1,
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      {isInactive ? t('unblockUser') : t('blockUser')}
+                    </button>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       )}
 
