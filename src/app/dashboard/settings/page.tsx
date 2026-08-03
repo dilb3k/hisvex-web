@@ -531,7 +531,7 @@ export default function SettingsPage() {
             textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{t('businessDayHour')}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>{t('businessDayHour')}</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-primary)' }}>
               {String(getBusinessDayStartHour()).padStart(2, '0')}:00
@@ -725,6 +725,10 @@ export default function SettingsPage() {
                   )
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Block Code */}
       <div style={sectionStyle}>
@@ -760,31 +764,6 @@ export default function SettingsPage() {
           <ChevronRight size={18} style={{ color: 'var(--color-text-secondary)' }} />
         </button>
       </div>
-
-      {/* Support */}
-              <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-                  {t('contactAdminSub')}
-                </p>
-                <a
-                  href="https://t.me/dilbek7011"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                    textDecoration: 'none', color: '#0088cc',
-                    background: '#0088cc15', border: '1px solid #0088cc40',
-                  }}
-                >
-                  <MessageCircle size={16} />
-                  Telegram: @dilbek7011
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Business Day Modal */}
       {showBusinessDay && (
