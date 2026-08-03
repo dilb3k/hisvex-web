@@ -143,13 +143,16 @@ export default function ProductsPage() {
 
   const blockCodeFromUser = useAuthStore((s) => s.user?.blockCode ?? null)
   const [showBlockModal, setShowBlockModal] = useState(false)
-  const [blockInput, setBlockInput] = useState('')
-  const [blockInputConfirm, setBlockInputConfirm] = useState('')
-  const [blockCurrent, setBlockCurrent] = useState('')
+  const [pinStep, setPinStep] = useState(0)
+  const [pinInputs, setPinInputs] = useState<string[]>(['', '', ''])
+  const [pinError, setPinError] = useState<string | null>(null)
   const [blockCode, setBlockCodeState] = useState<string | null>(blockCodeFromUser)
+  const blockBoxRefs = useRef<(HTMLInputElement | null)[]>([])
 
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
+  const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
+  const pinBoxRefs = useRef<(HTMLInputElement | null)[]>([])
 
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -311,31 +314,84 @@ export default function ProductsPage() {
 
   const handleSave = async () => {
     if (!validate()) return
-    if (blockCode && editingProduct) { setShowPinVerify(true); setPinInput(''); return }
+    if (blockCode && editingProduct) { setShowPinVerify(true); setPinInput(''); setPinVerifyError(null); return }
     await execSave()
   }
 
-  const handleConfirmPin = () => {
-    if (pinInput === blockCode) { setShowPinVerify(false); setPinInput(''); execSave() }
-    else { console.error('Block code mismatch'); setPinInput('') }
-  }
+  const confirmPin = useCallback((value: string) => {
+    if (value === blockCode) {
+      setShowPinVerify(false); setPinInput(''); setPinVerifyError(null)
+      execSave()
+    } else {
+      setPinVerifyError("Blok kod noto'g'ri")
+      setPinInput('')
+      setTimeout(() => pinBoxRefs.current[0]?.focus(), 60)
+    }
+  }, [blockCode, execSave])
 
-  const handleSetBlockCode = () => {
-    if (blockInput.length !== 4 || !/^\d{4}$/.test(blockInput)) { console.error('Block code must be 4 digits'); return }
-    if (!blockCode && blockInput !== blockInputConfirm) { console.error('Block codes do not match'); return }
-    if (blockCode && blockCurrent !== blockCode) { console.error('Current block code mismatch'); return }
-    setBlockCodeState(blockInput)
-    const u = useAuthStore.getState().user
-    if (u) useAuthStore.getState().setUser({ ...u, blockCode: blockInput })
-    setShowBlockModal(false); setBlockInput(''); setBlockInputConfirm(''); setBlockCurrent('')
-  }
+  const blockSteps = blockCode ? ['Joriy kod', 'Yangi kod', 'Kodni takrorlang'] : ['Yangi kod', 'Kodni takrorlang']
+
+  const handleStepAction = useCallback((step: number, inputs: string[]) => {
+    const value = inputs[step] ?? ''
+    if (value.length !== 4 || !/^\d{4}$/.test(value)) return
+    const isLast = step === blockSteps.length - 1
+
+    if (blockCode && step === 0 && value !== blockCode) {
+      setPinError("Joriy kod noto'g'ri")
+      setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
+      setTimeout(() => blockBoxRefs.current[0]?.focus(), 60)
+      return
+    }
+
+    if (isLast) {
+      const a = inputs[0] ?? ''
+      const b = inputs[1] ?? ''
+      const c = inputs[2] ?? ''
+      const u = useAuthStore.getState().user
+      if (blockCode) {
+        if (b !== c) {
+          setPinError('Kodlar bir xil emas')
+          setPinInputs((prev) => { const n = [...prev]; n[2] = ''; return n })
+          setTimeout(() => blockBoxRefs.current[0]?.focus(), 60)
+          return
+        }
+        setBlockCodeState(b)
+        if (u) useAuthStore.getState().setUser({ ...u, blockCode: b })
+      } else {
+        if (a !== b) {
+          setPinError('Kodlar bir xil emas')
+          setPinInputs((prev) => { const n = [...prev]; n[1] = ''; return n })
+          setTimeout(() => blockBoxRefs.current[0]?.focus(), 60)
+          return
+        }
+        setBlockCodeState(a)
+        if (u) useAuthStore.getState().setUser({ ...u, blockCode: a })
+      }
+      setShowBlockModal(false)
+      setPinInputs(['', '', ''])
+      setPinError(null)
+      return
+    }
+
+    setPinError(null)
+    setPinStep(step + 1)
+    setTimeout(() => blockBoxRefs.current[0]?.focus(), 60)
+  }, [blockCode, blockSteps.length])
 
   const handleRemoveBlockCode = () => {
-    if (blockCurrent !== blockCode) { console.error('Current block code mismatch'); return }
+    const value = pinInputs[0] ?? ''
+    if (value !== blockCode) {
+      setPinError("Joriy kod noto'g'ri")
+      setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
+      setTimeout(() => blockBoxRefs.current[0]?.focus(), 60)
+      return
+    }
     setBlockCodeState(null)
     const u = useAuthStore.getState().user
     if (u) { const { blockCode: _, ...rest } = u; useAuthStore.getState().setUser(rest as typeof u) }
-    setShowBlockModal(false); setBlockInput(''); setBlockInputConfirm(''); setBlockCurrent('')
+    setShowBlockModal(false)
+    setPinInputs(['', '', ''])
+    setPinError(null)
   }
 
   const handleRestock = async () => {
@@ -392,7 +448,7 @@ export default function ProductsPage() {
             />
           </div>
           <button
-            onClick={() => { setBlockCurrent(''); setBlockInput(''); setBlockInputConfirm(''); setShowBlockModal(true) }}
+            onClick={() => { setPinStep(0); setPinInputs(['', '', '']); setPinError(null); setShowBlockModal(true) }}
             style={{
               ...btnIcon,
               background: blockCode ? 'var(--color-warning)' : 'var(--color-surface)',
@@ -978,47 +1034,112 @@ export default function ProductsPage() {
             padding: 24,
             width: 380,
             border: '1px solid var(--color-border)',
-            textAlign: 'center',
             boxShadow: 'var(--shadow-lg)',
           }} onClick={(e) => e.stopPropagation()}>
-            <Lock size={32} color="var(--color-primary)" style={{ marginBottom: 12 }} />
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>
-              {blockCode ? "Blok kodni o'zgartirish" : "Blok kod o'rnatish"}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: 'var(--color-primary-light, rgba(59,130,246,0.12))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Lock size={20} color="var(--color-primary)" />
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>
+                  {blockCode ? "Blok kodni o'zgartirish" : "Blok kod o'rnatish"}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                  {blockCode ? '3 qadam' : '2 qadam'}
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-              {blockCode ? "Yangi 4 xonali raqam kiriting" : "Mahsulotni tahrirlashda himoya kodi (4 xonali)"}
-            </div>
-            {blockCode && (
-              <input
-                type="password" inputMode="numeric" placeholder="Joriy kod" maxLength={4}
-                value={blockCurrent}
-                onChange={(e) => setBlockCurrent(e.target.value.replace(/\D/g, ''))}
-                style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 10 }}
-              />
-            )}
-            <input
-              type="password" inputMode="numeric" placeholder="0000" maxLength={4}
-              value={blockInput}
-              onChange={(e) => setBlockInput(e.target.value.replace(/\D/g, ''))}
-              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 10 }}
-            />
-            {!blockCode && (
-              <input
-                type="password" inputMode="numeric" placeholder="Kodni takrorlang" maxLength={4}
-                value={blockInputConfirm}
-                onChange={(e) => setBlockInputConfirm(e.target.value.replace(/\D/g, ''))}
-                style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 10 }}
-              />
-            )}
-            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-              {blockCode ? (
-                <>
-                  <button onClick={handleRemoveBlockCode} style={{ ...btnDanger, flex: 1 }}>O'chirish</button>
-                  <button onClick={handleSetBlockCode} style={{ ...btnPrimary, flex: 1 }}>Yangilash</button>
-                </>
+
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text)', marginBottom: 24 }}>
+                {blockSteps[pinStep]}
+              </div>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 22 }}>
+                {[0, 1, 2, 3].map((i) => {
+                  const v = (pinInputs[pinStep] ?? '')
+                  return (
+                    <input
+                      key={i}
+                      ref={(el) => { blockBoxRefs.current[i] = el }}
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      autoFocus={i === 0}
+                      maxLength={1}
+                      value={v[i] ?? ''}
+                      onChange={(e) => {
+                        const d = e.target.value.replace(/\D/g, '').slice(-1)
+                        const chars = v.split('')
+                        if (d) chars[i] = d
+                        const nv = chars.join('')
+                        setPinInputs((prev) => { const n = [...prev]; n[pinStep] = nv; return n })
+                        if (d && i < 3) blockBoxRefs.current[i + 1]?.focus()
+                        if (d && i === 3) {
+                          const next = [...pinInputs]
+                          next[pinStep] = nv
+                          setTimeout(() => handleStepAction(pinStep, next), 200)
+                        }
+                        if (!d && i > 0) blockBoxRefs.current[i - 1]?.focus()
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Backspace' && !v[i] && i > 0) {
+                          e.preventDefault()
+                          blockBoxRefs.current[i - 1]?.focus()
+                        }
+                      }}
+                      style={{
+                        width: 56,
+                        height: 60,
+                        borderRadius: 12,
+                        border: i === Math.min(v.length, 4) && v.length < 4
+                          ? '2px solid var(--color-primary)'
+                          : '1.5px solid var(--color-border)',
+                        background: 'var(--color-bg)',
+                        color: 'var(--color-text)',
+                        fontSize: 26,
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        outline: 'none',
+                        caretColor: 'transparent',
+                        fontVariantNumeric: 'tabular-nums',
+                        transition: 'border-color 0.15s ease',
+                      }}
+                    />
+                  )
+                })}
+              </div>
+
+              {pinError ? (
+                <div style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 20, minHeight: 18 }}>{pinError}</div>
               ) : (
-                <button onClick={handleSetBlockCode} style={{ ...btnPrimary, flex: 1 }}>Saqlash</button>
+                <div style={{ minHeight: 18, marginBottom: 20 }} />
               )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                {blockCode && pinStep === 0 && (
+                  <button onClick={handleRemoveBlockCode} style={{ ...btnDanger, flex: 1, background: 'transparent', border: '1px solid var(--color-danger)' }}>O'chirish</button>
+                )}
+                <button
+                  onClick={() => {
+                    const v = pinInputs[pinStep] ?? ''
+                    const next = [...pinInputs]
+                    next[pinStep] = v
+                    handleStepAction(pinStep, next)
+                  }}
+                  disabled={(pinInputs[pinStep] ?? '').length !== 4}
+                  style={{
+                    ...btnPrimary, flex: 1,
+                    opacity: (pinInputs[pinStep] ?? '').length === 4 ? 1 : 0.5,
+                    cursor: (pinInputs[pinStep] ?? '').length === 4 ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {pinStep === blockSteps.length - 1 ? 'Saqlash' : 'Davom etish'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1038,19 +1159,77 @@ export default function ProductsPage() {
           }} onClick={(e) => e.stopPropagation()}>
             <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
-            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
               Mahsulotni saqlash uchun himoya kodini kiriting
             </div>
-            <input
-              type="password" inputMode="numeric" placeholder="0000" maxLength={4}
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-              autoFocus
-              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, textIndent: 6, marginBottom: 16 }}
-            />
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 20 }}>
+              {[0, 1, 2, 3].map((i) => (
+                <input
+                  key={i}
+                  ref={(el) => { pinBoxRefs.current[i] = el }}
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus={i === 0}
+                  maxLength={1}
+                  value={pinInput[i] ?? ''}
+                  onChange={(e) => {
+                    const d = e.target.value.replace(/\D/g, '').slice(-1)
+                    const chars = pinInput.split('')
+                    if (d) chars[i] = d
+                    const nv = chars.join('')
+                    setPinInput(nv)
+                    if (d && i < 3) pinBoxRefs.current[i + 1]?.focus()
+                    if (d && i === 3) setTimeout(() => confirmPin(nv), 200)
+                    if (!d && i > 0) pinBoxRefs.current[i - 1]?.focus()
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' && !pinInput[i] && i > 0) {
+                      e.preventDefault()
+                      pinBoxRefs.current[i - 1]?.focus()
+                    }
+                    if (e.key === 'Enter' && pinInput.length === 4) confirmPin(pinInput)
+                  }}
+                  style={{
+                    width: 56,
+                    height: 60,
+                    borderRadius: 12,
+                    border: i === Math.min(pinInput.length, 4) && pinInput.length < 4
+                      ? '2px solid var(--color-primary)'
+                      : '1.5px solid var(--color-border)',
+                    background: 'var(--color-bg)',
+                    color: 'var(--color-text)',
+                    fontSize: 26,
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    outline: 'none',
+                    caretColor: 'transparent',
+                    fontVariantNumeric: 'tabular-nums',
+                    transition: 'border-color 0.15s ease',
+                  }}
+                />
+              ))}
+            </div>
+
+            {pinVerifyError ? (
+              <div style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 16, minHeight: 18 }}>{pinVerifyError}</div>
+            ) : (
+              <div style={{ minHeight: 18, marginBottom: 16 }} />
+            )}
+
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowPinVerify(false)} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
-              <button onClick={handleConfirmPin} style={{ ...btnPrimary, flex: 1 }}>Tasdiqlash</button>
+              <button
+                onClick={() => confirmPin(pinInput)}
+                disabled={pinInput.length !== 4}
+                style={{
+                  ...btnPrimary, flex: 1,
+                  opacity: pinInput.length === 4 ? 1 : 0.5,
+                  cursor: pinInput.length === 4 ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Tasdiqlash
+              </button>
             </div>
           </div>
         </div>

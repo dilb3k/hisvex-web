@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/authStore'
 import { useAppStore } from '@/lib/appStore'
@@ -123,17 +123,39 @@ export default function SettingsPage() {
 
   const blockCode = user?.blockCode ?? null
   const [showBlockModal, setShowBlockModal] = useState(false)
-  const [blockCurrent, setBlockCurrent] = useState('')
-  const [blockNew, setBlockNew] = useState('')
-  const [blockNewConfirm, setBlockNewConfirm] = useState('')
-  const [isBlockBusy, setIsBlockBusy] = useState(false)
+  const [pinStep, setPinStep] = useState(0)
+  const [pinInputs, setPinInputs] = useState<string[]>(['', '', ''])
+  const [pinError, setPinError] = useState<string | null>(null)
+  const boxRefs = useRef<(HTMLInputElement | null)[]>([])
+
+  const blockSteps = blockCode
+    ? [t('blockCodeCurrent'), t('blockCodeNew'), t('blockCodeConfirm')]
+    : [t('blockCodeSet'), t('blockCodeConfirm')]
+
+  const curPin = pinInputs[pinStep] ?? ''
+  const isLastStep = pinStep === blockSteps.length - 1
+  const nextBox = Math.min(curPin.length, 4)
+
+  const focusBox = useCallback((i: number) => {
+    const el = boxRefs.current[i]
+    if (el) el.focus()
+  }, [])
+
+  const setCurPin = useCallback((v: string) => {
+    setPinInputs((prev) => {
+      const n = [...prev]
+      n[pinStep] = v.slice(0, 4)
+      return n
+    })
+  }, [pinStep])
 
   const openBlockModal = useCallback(() => {
-    setBlockCurrent('')
-    setBlockNew('')
-    setBlockNewConfirm('')
+    setPinStep(0)
+    setPinInputs(['', '', ''])
+    setPinError(null)
     setShowBlockModal(true)
-  }, [])
+    setTimeout(() => focusBox(0), 60)
+  }, [focusBox])
 
   const persistBlockCode = useCallback((code: string | null) => {
     const u = useAuthStore.getState().user
@@ -146,33 +168,61 @@ export default function SettingsPage() {
     }
   }, [])
 
-  const handleSaveBlock = useCallback(() => {
-    if (blockNew.length !== 4 || !/^\d{4}$/.test(blockNew)) {
-      showToast(t('blockCodeInvalid'), 'error')
+  const handleStepAction = useCallback((step: number, inputs: string[]) => {
+    const value = inputs[step] ?? ''
+    if (value.length !== 4 || !/^\d{4}$/.test(value)) return
+    const isLast = step === (blockCode ? 3 : 2) - 1
+
+    if (blockCode && step === 0 && value !== blockCode) {
+      setPinError(t('blockCodeWrong'))
+      setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
+      setTimeout(() => focusBox(0), 60)
       return
     }
-    if (blockNew !== blockNewConfirm) {
-      showToast(t('blockCodeMismatch'), 'error')
+
+    if (isLast) {
+      const a = inputs[0] ?? ''
+      const b = inputs[1] ?? ''
+      const c = inputs[2] ?? ''
+      if (blockCode) {
+        if (b !== c) {
+          setPinError(t('blockCodeMismatch'))
+          setPinInputs((prev) => { const n = [...prev]; n[2] = ''; return n })
+          setTimeout(() => focusBox(0), 60)
+          return
+        }
+        persistBlockCode(b)
+      } else {
+        if (a !== b) {
+          setPinError(t('blockCodeMismatch'))
+          setPinInputs((prev) => { const n = [...prev]; n[1] = ''; return n })
+          setTimeout(() => focusBox(0), 60)
+          return
+        }
+        persistBlockCode(a)
+      }
+      setShowBlockModal(false)
+      showToast(t('blockCodeSaved'), 'success')
       return
     }
-    if (blockCode && blockCurrent !== blockCode) {
-      showToast(t('blockCodeWrong'), 'error')
-      return
-    }
-    persistBlockCode(blockNew)
-    setShowBlockModal(false)
-    showToast(t('blockCodeSaved'), 'success')
-  }, [blockNew, blockNewConfirm, blockCode, blockCurrent, persistBlockCode, showToast])
+
+    setPinError(null)
+    setPinStep(step + 1)
+    setTimeout(() => focusBox(0), 60)
+  }, [blockCode, persistBlockCode, focusBox, showToast, t])
 
   const handleRemoveBlock = useCallback(() => {
-    if (blockCurrent !== blockCode) {
-      showToast(t('blockCodeWrong'), 'error')
+    const value = pinInputs[0] ?? ''
+    if (value !== blockCode) {
+      setPinError(t('blockCodeWrong'))
+      setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
+      setTimeout(() => focusBox(0), 60)
       return
     }
     persistBlockCode(null)
     setShowBlockModal(false)
     showToast(t('blockCodeRemoved'), 'success')
-  }, [blockCurrent, blockCode, persistBlockCode, showToast])
+  }, [pinInputs, blockCode, persistBlockCode, focusBox, showToast, t])
 
   const userTier = user?.tier ?? 'tekin'
   const pendingHour = getPendingBusinessDayStartHour()
@@ -924,7 +974,16 @@ export default function SettingsPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '16px 20px', borderBottom: '1px solid var(--color-border)',
             }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('blockCode')}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  background: blockCode ? 'rgba(245,158,11,0.12)' : 'var(--color-bg)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Lock size={16} style={{ color: blockCode ? 'var(--color-warning)' : 'var(--color-text-secondary)' }} />
+                </div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('blockCode')}</h3>
+              </div>
               <button onClick={() => setShowBlockModal(false)} style={{
                 width: 32, height: 32, borderRadius: 8, border: 'none',
                 background: 'transparent', color: 'var(--color-text-secondary)',
@@ -932,121 +991,114 @@ export default function SettingsPage() {
               }}><X size={20} /></button>
             </div>
 
-            <div style={{ padding: 20 }}>
-              {blockCode && (
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
-                    {t('blockCodeCurrent')}
-                  </label>
+            <div style={{ padding: '32px 24px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{blockSteps[pinStep]}</div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5, minHeight: 20, marginBottom: 28 }}>
+                {!blockCode && pinStep === 0
+                  ? t('blockCodePurpose')
+                  : blockCode && pinStep === 0
+                    ? t('blockCodeCurrentHint')
+                    : ' '}
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 22 }}>
+                {[0, 1, 2, 3].map((i) => (
                   <input
+                    key={i}
+                    ref={(el) => { boxRefs.current[i] = el }}
                     type="password"
                     inputMode="numeric"
-                    placeholder="0000"
-                    maxLength={4}
-                    value={blockCurrent}
-                    onChange={(e) => setBlockCurrent(e.target.value.replace(/\D/g, ''))}
-                    autoFocus
+                    autoComplete="one-time-code"
+                    maxLength={1}
+                    value={curPin[i] ?? ''}
+                    onChange={(e) => {
+                      const d = e.target.value.replace(/\D/g, '').slice(-1)
+                      const chars = curPin.split('')
+                      if (d) chars[i] = d
+                      const nv = chars.join('')
+                      setCurPin(nv)
+                      if (d && i < 3) focusBox(i + 1)
+                      if (d && i === 3) {
+                        const nextInputs = [...pinInputs]
+                        nextInputs[pinStep] = nv
+                        setTimeout(() => handleStepAction(pinStep, nextInputs), 200)
+                      }
+                      if (!d && i > 0) focusBox(i - 1)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Backspace' && !curPin[i] && i > 0) {
+                        e.preventDefault()
+                        focusBox(i - 1)
+                      }
+                      if (e.key === 'Enter' && curPin.length === 4) {
+                        const nextInputs = [...pinInputs]
+                        nextInputs[pinStep] = curPin
+                        handleStepAction(pinStep, nextInputs)
+                      }
+                    }}
                     style={{
-                      width: '100%',
-                      padding: '12px',
-                      borderRadius: 8,
-                      border: '1px solid var(--color-border)',
+                      width: 56,
+                      height: 60,
+                      borderRadius: 12,
+                      border: i === nextBox && nextBox < 4
+                        ? '2px solid var(--color-primary)'
+                        : '1.5px solid var(--color-border)',
                       background: 'var(--color-bg)',
                       color: 'var(--color-text)',
-                      fontSize: 20,
+                      fontSize: 26,
+                      fontWeight: 600,
                       textAlign: 'center',
-                      letterSpacing: 6,
-                      textIndent: 6,
+                      outline: 'none',
+                      caretColor: 'transparent',
                       fontVariantNumeric: 'tabular-nums',
+                      transition: 'border-color 0.15s ease',
                     }}
                   />
+                ))}
+              </div>
+
+              {pinError ? (
+                <div style={{
+                  fontSize: 13, color: 'var(--color-danger)', marginBottom: 20, minHeight: 18,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                  <Info size={14} />
+                  {pinError}
                 </div>
-              )}
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
-                  {blockCode ? t('blockCodeNew') : t('blockCodeSet')}
-                </label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="0000"
-                  maxLength={4}
-                  value={blockNew}
-                  onChange={(e) => setBlockNew(e.target.value.replace(/\D/g, ''))}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                    fontSize: 20,
-                    textAlign: 'center',
-                    letterSpacing: 6,
-                    textIndent: 6,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
-                  {t('blockCodeConfirm')}
-                </label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="0000"
-                  maxLength={4}
-                  value={blockNewConfirm}
-                  onChange={(e) => setBlockNewConfirm(e.target.value.replace(/\D/g, ''))}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                    fontSize: 20,
-                    textAlign: 'center',
-                    letterSpacing: 6,
-                    textIndent: 6,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                />
-              </div>
-
-              {!blockCode && (
-                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 16, lineHeight: 1.5 }}>
-                  {t('blockCodePurpose')}
-                </p>
+              ) : (
+                <div style={{ minHeight: 18, marginBottom: 20 }} />
               )}
 
               <div style={{ display: 'flex', gap: 10 }}>
-                {blockCode && (
+                {blockCode && pinStep === 0 && (
                   <button
                     onClick={handleRemoveBlock}
-                    disabled={isBlockBusy}
                     style={{
-                      flex: 1, padding: '12px 0', borderRadius: 8, border: 'none',
-                      background: 'rgba(239,68,68,0.1)', color: 'var(--color-danger)',
-                      fontSize: 14, fontWeight: 600, cursor: isBlockBusy ? 'not-allowed' : 'pointer',
+                      flex: 1, padding: '13px 0', borderRadius: 10,
+                      border: '1px solid var(--color-danger)', background: 'transparent',
+                      color: 'var(--color-danger)', fontSize: 14, fontWeight: 600,
+                      cursor: 'pointer',
                     }}
                   >
                     {t('blockCodeRemove')}
                   </button>
                 )}
                 <button
-                  onClick={handleSaveBlock}
-                  disabled={isBlockBusy}
+                  onClick={() => {
+                    const nextInputs = [...pinInputs]
+                    nextInputs[pinStep] = curPin
+                    handleStepAction(pinStep, nextInputs)
+                  }}
+                  disabled={curPin.length !== 4}
                   style={{
-                    flex: 1, padding: '12px 0', borderRadius: 8, border: 'none',
+                    flex: 1, padding: '13px 0', borderRadius: 10, border: 'none',
                     background: 'var(--color-primary)', color: '#fff',
-                    fontSize: 14, fontWeight: 600, cursor: isBlockBusy ? 'not-allowed' : 'pointer',
+                    fontSize: 14, fontWeight: 600,
+                    cursor: curPin.length === 4 ? 'pointer' : 'not-allowed',
+                    opacity: curPin.length === 4 ? 1 : 0.5,
                   }}
                 >
-                  {t('save')}
+                  {isLastStep ? t('save') : t('blockNext')}
                 </button>
               </div>
             </div>
