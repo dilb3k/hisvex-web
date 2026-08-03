@@ -186,11 +186,11 @@ export default function InventoryPage() {
     return (
       <div style={s.card} onClick={() => openModal(entry)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
             {(entry.product.image || entry.product.imageHash) ? (
-              <img src={resolveImageUrl(entry.product.image, entry.product.imageHash)} alt={entry.product.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />
+              <img src={resolveImageUrl(entry.product.image, entry.product.imageHash)} alt={entry.product.name} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
             ) : (
-              <Package size={20} color="var(--color-text-tertiary)" />
+              <Package size={24} color="var(--color-text-tertiary)" />
             )}
           </div>
           <div style={{ flex: 1 }}>
@@ -222,11 +222,11 @@ export default function InventoryPage() {
       <div style={overlay} onClick={closeModal}>
         <div style={s.modal} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
               {(selectedEntry.product.image || selectedEntry.product.imageHash) ? (
-                <img src={resolveImageUrl(selectedEntry.product.image, selectedEntry.product.imageHash)} alt={selectedEntry.product.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />
+                <img src={resolveImageUrl(selectedEntry.product.image, selectedEntry.product.imageHash)} alt={selectedEntry.product.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} />
               ) : (
-                <Package size={18} color="var(--color-text-tertiary)" />
+                <Package size={22} color="var(--color-text-tertiary)" />
               )}
             </div>
             <div style={{ flex: 1 }}>

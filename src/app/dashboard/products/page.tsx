@@ -428,46 +428,28 @@ export default function ProductsPage() {
           )}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="product-grid">
           {sortedProducts.map((item) => {
             const status = getStockStatus(item.quantity ?? 0)
             return (
               <div
                 key={item._id}
-                style={{
-                  background: 'var(--color-surface)',
-                  borderRadius: 12,
-                  border: '1px solid var(--color-border)',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  transition: 'box-shadow 0.15s',
-                }}
+                className="product-card"
                 onClick={() => openEdit(item)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
-                  <div style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 10,
-                    background: 'var(--color-bg)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                  }}>
-                    {(item.image || item.imageHash) ? (
-                      <img
-                        src={resolveImageUrl(item.image, item.imageHash)}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <Package size={22} color="var(--color-text-tertiary)" />
-                    )}
-                  </div>
+                <div className="product-card-img">
+                  {(item.image || item.imageHash) ? (
+                    <img
+                      src={resolveImageUrl(item.image, item.imageHash)}
+                      alt=""
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Package size={28} color="var(--color-text-tertiary)" />
+                  )}
+                </div>
 
+                <div className="product-card-mid">
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>{item.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 3 }}>
@@ -480,51 +462,33 @@ export default function ProductsPage() {
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'right', minWidth: 80 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(item.buyPrice)}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('buy')}</div>
-                  </div>
-                  <div style={{ textAlign: 'right', minWidth: 80 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(item.sellPrice)}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('sell')}</div>
+                  <div className="product-card-prices">
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(item.buyPrice)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('buy')}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(item.sellPrice)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('sell')}</div>
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)' }}>
+                <div className="product-card-actions">
                   <div
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '10px 0',
-                      cursor: 'pointer',
-                      color: 'var(--color-primary)',
-                      transition: 'background 0.1s',
-                    }}
+                    className="product-card-action"
                     onClick={(e) => { e.stopPropagation(); openEdit(item) }}
                   >
                     <Pencil size={15} />
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{t('edit')}</span>
+                    <span>{t('edit')}</span>
                   </div>
-                  <div style={{ width: 1, background: 'var(--color-border)' }} />
                   <div
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '10px 0',
-                      background: 'var(--color-success)',
-                      cursor: 'pointer',
-                      color: '#fff',
-                    }}
+                    className="product-card-action"
+                    style={{ background: 'var(--color-success)', color: '#fff' }}
                     onClick={(e) => { e.stopPropagation(); openRestock(item) }}
                   >
                     <Plus size={18} />
-                    <span style={{ fontSize: 13, fontWeight: 700 }}>{t('add')}</span>
+                    <span>{t('add')}</span>
                   </div>
                 </div>
               </div>
@@ -689,8 +653,8 @@ export default function ProductsPage() {
               <div
                 onClick={handleImagePick}
                 style={{
-                  height: 140,
-                  borderRadius: 10,
+                  height: 200,
+                  borderRadius: 12,
                   border: '1.5px dashed var(--color-border)',
                   background: 'var(--color-surface)',
                   display: 'flex',
@@ -699,14 +663,14 @@ export default function ProductsPage() {
                   overflow: 'hidden',
                   cursor: 'pointer',
                   marginBottom: 14,
-                  transition: 'border-color 0.15s',
+                  transition: 'border-color 0.15s, background 0.15s',
                 }}
               >
                 {form.image ? (
                   <img src={resolveImageUrl(form.image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
                   <div style={{ textAlign: 'center' }}>
-                    <Package size={32} color="var(--color-text-tertiary)" style={{ marginBottom: 6, opacity: 0.5 }} />
+                    <Package size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 6, opacity: 0.5 }} />
                     <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('addImage')}</div>
                   </div>
                 )}
@@ -774,9 +738,9 @@ export default function ProductsPage() {
               <button
                 onClick={handleSave}
                 disabled={isSubmitting}
-                style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', gap: 6 }}
+                style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
               >
-                {blockCode ? <Lock size={14} color="#fff" /> : null}
+                {blockCode ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isSubmitting ? t('loading') : t('save')}
               </button>
             </div>

@@ -286,9 +286,9 @@ export default function SalesPage() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
                     <div style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 8,
+                      width: 56,
+                      height: 56,
+                      borderRadius: 10,
                       background: 'var(--color-bg)',
                       display: 'flex',
                       alignItems: 'center',
