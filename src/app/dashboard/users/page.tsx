@@ -151,9 +151,11 @@ export default function UsersPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [tierFilter, setTierFilter] = useState<User['tier'] | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
 
   const loadAdmins = useCallback(async (silent = false) => {
     if (user?.role !== 'superAdmin') {
@@ -178,22 +180,26 @@ export default function UsersPage() {
 
   const stats = useMemo(() => {
     const total = admins.length
+    const inactive = admins.filter((a) => a.isActive === false).length
     const active = admins.filter((a) => a.tier !== 'tekin' && daysUntilExpiry(a.subscriptionEndDate) !== 0).length
     const expired = admins.filter((a) => a.tier !== 'tekin' && daysUntilExpiry(a.subscriptionEndDate) === 0).length
     const pro = admins.filter((a) => a.tier === 'pro').length
-    return { total, active, expired, pro }
+    return { total, inactive, active, expired, pro }
   }, [admins])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return admins.filter((a) => {
       const matchesTier = tierFilter === 'all' || a.tier === tierFilter
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'active' && a.isActive !== false)
+        || (statusFilter === 'inactive' && a.isActive === false)
       const matchesSearch = !q
         || a.username.toLowerCase().includes(q)
         || (a.phone_number || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-      return matchesTier && matchesSearch
+      return matchesTier && matchesStatus && matchesSearch
     })
-  }, [admins, search, tierFilter])
+  }, [admins, search, tierFilter, statusFilter])
 
   if (!user || user.role !== 'superAdmin') return null
 
@@ -222,6 +228,21 @@ export default function UsersPage() {
     setDeleteTarget(null)
     loadAdmins(true)
     showToast(t('adminDeleted'), 'success')
+  }
+
+  const handleToggleActive = async (admin: User) => {
+    if (togglingId) return
+    setTogglingId(admin._id)
+    const next = admin.isActive === false
+    try {
+      await adminsApi.update(admin._id, { isActive: next })
+      setAdmins((prev) => prev.map((a) => (a._id === admin._id ? { ...a, isActive: next } : a)))
+      showToast(next ? t('adminActivated') : t('adminDeactivated'), 'success')
+    } catch {
+      // handled globally
+    } finally {
+      setTogglingId(null)
+    }
   }
 
   return (
@@ -320,6 +341,7 @@ export default function UsersPage() {
         <StatCard icon={<CreditCard size={15} />} label={t('activeSubscriptions')} value={stats.active} color="#10B981" soft="rgba(16,185,129,0.14)" />
         <StatCard icon={<Crown size={15} />} label={t('proAccounts')} value={stats.pro} color="#8B5CF6" soft="rgba(139,92,246,0.14)" />
         <StatCard icon={<Clock size={15} />} label={t('expiredSubscriptions')} value={stats.expired} color="#EF4444" soft="rgba(239,68,68,0.14)" />
+        <StatCard icon={<LogOut size={15} />} label={t('inactive')} value={stats.inactive} color="#6b7280" soft="rgba(107,114,128,0.14)" />
       </div>
 
       {/* ===== Toolbar ===== */}
@@ -372,6 +394,32 @@ export default function UsersPage() {
             )
           })}
         </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([
+            { key: 'all' as const, labelKey: 'all' as const, color: 'var(--color-primary)' },
+            { key: 'active' as const, labelKey: 'active' as const, color: '#10B981' },
+            { key: 'inactive' as const, labelKey: 'inactive' as const, color: '#EF4444' },
+          ]).map((opt) => {
+            const selected = statusFilter === opt.key
+            const color = opt.key === 'all' ? 'var(--color-primary)' : opt.color
+            return (
+              <button
+                key={opt.key}
+                onClick={() => setStatusFilter(opt.key)}
+                style={{
+                  padding: '8px 16px', borderRadius: 20,
+                  border: `1.5px solid ${selected ? color : 'var(--color-border)'}`,
+                  background: selected ? `${color}14` : 'transparent',
+                  color: selected ? color : 'var(--color-text-secondary)',
+                  fontSize: 13, fontWeight: selected ? 700 : 500,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >
+                {t(opt.labelKey as any)}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
@@ -400,14 +448,14 @@ export default function UsersPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: 'var(--color-primary)',
           }}>
-            {search || tierFilter !== 'all' ? <Search size={32} /> : <Users size={32} />}
+            {search || tierFilter !== 'all' || statusFilter !== 'all' ? <Search size={32} /> : <Users size={32} />}
           </div>
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
-            {search || tierFilter !== 'all' ? t('noResults') : "Foydalanuvchilar yo'q"}
+            {search || tierFilter !== 'all' || statusFilter !== 'all' ? t('noResults') : "Foydalanuvchilar yo'q"}
           </span>
-          {(search || tierFilter !== 'all') && (
+          {(search || tierFilter !== 'all' || statusFilter !== 'all') && (
             <button
-              onClick={() => { setSearch(''); setTierFilter('all') }}
+              onClick={() => { setSearch(''); setTierFilter('all'); setStatusFilter('all') }}
               style={{
                 marginTop: 14, padding: '8px 18px', borderRadius: 10,
                 border: '1px solid var(--color-border)',
@@ -426,13 +474,16 @@ export default function UsersPage() {
             const isUnlimited = admin.tier === 'pro' && !admin.subscriptionEndDate
             const isExpired = admin.tier !== 'tekin' && days === 0
             const isLow = days !== null && days > 0 && days <= 3
-            const statusColor = isExpired
-              ? 'var(--color-danger)'
-              : isLow
-                ? '#F59E0B'
-                : isUnlimited || (days !== null && days > 0) || admin.tier === 'tekin'
-                  ? '#10B981'
-                  : 'var(--color-text-tertiary)'
+            const isInactive = admin.isActive === false
+            const statusColor = isInactive
+              ? 'var(--color-text-tertiary)'
+              : isExpired
+                ? 'var(--color-danger)'
+                : isLow
+                  ? '#F59E0B'
+                  : isUnlimited || (days !== null && days > 0) || admin.tier === 'tekin'
+                    ? '#10B981'
+                    : 'var(--color-text-tertiary)'
             const barPercent = days !== null && days > 0
               ? Math.min(100, Math.round((days / 30) * 100))
               : 0
@@ -444,47 +495,81 @@ export default function UsersPage() {
                 style={{
                   borderRadius: 16,
                   background: 'var(--color-surface)',
-                  border: `1px solid ${isExpired ? 'rgba(239,68,68,0.3)' : 'var(--color-border)'}`,
+                  border: `1px solid ${isInactive ? 'rgba(107,114,128,0.35)' : isExpired ? 'rgba(239,68,68,0.3)' : 'var(--color-border)'}`,
                   padding: 18,
-                  transition: 'transform 0.15s, box-shadow 0.2s, border-color 0.2s',
+                  opacity: isInactive ? 0.72 : 1,
+                  transition: 'transform 0.15s, box-shadow 0.2s, border-color 0.2s, opacity 0.2s',
                   position: 'relative',
                   overflow: 'hidden',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.borderColor = 'var(--color-border-light)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = isExpired ? 'rgba(239,68,68,0.3)' : 'var(--color-border)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = isInactive ? 'rgba(107,114,128,0.35)' : isExpired ? 'rgba(239,68,68,0.3)' : 'var(--color-border)' }}
               >
-                {isExpired && (
-                  <div style={{
+                <button
+                  onClick={() => handleToggleActive(admin)}
+                  disabled={togglingId === admin._id}
+                  title={isInactive ? t('adminActivated') : t('adminDeactivated')}
+                  style={{
                     position: 'absolute', top: 14, right: 14,
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '3px 10px', borderRadius: 12,
-                    background: 'var(--color-danger-soft)',
-                    color: 'var(--color-danger)',
-                    fontSize: 11, fontWeight: 700,
-                  }}>
-                    <Clock size={11} />
-                    {t('expired')}
-                  </div>
-                )}
+                    width: 44, height: 24, borderRadius: 12,
+                    border: 'none', cursor: 'pointer', padding: 0,
+                    background: isInactive ? 'rgba(107,114,128,0.45)' : 'linear-gradient(135deg, #10B981, #34D399)',
+                    opacity: togglingId === admin._id ? 0.55 : 1,
+                    transition: 'background 0.2s, opacity 0.2s',
+                    zIndex: 2,
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2, left: isInactive ? 2 : 22,
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: '#fff',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+                    transition: 'left 0.2s',
+                  }} />
+                </button>
 
                 <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
                   <Avatar username={admin.username} tier={admin.tier} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingRight: isExpired ? 70 : 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingRight: 58 }}>
                       <span style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {admin.username}
                       </span>
+                      {isInactive && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 8px', borderRadius: 6,
+                          fontSize: 11, fontWeight: 600,
+                          background: 'rgba(107,114,128,0.15)', color: 'var(--color-text-tertiary)',
+                          border: '1px solid rgba(107,114,128,0.35)',
+                        }}>
+                          <Clock size={11} />
+                          {t('inactive')}
+                        </span>
+                      )}
                       <RoleBadge role={admin.role} />
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
                       <TierBadge tier={admin.tier} />
-                      {admin.tier !== 'tekin' && !isExpired && (
+                      {!isInactive && admin.tier !== 'tekin' && !isExpired && (
                         <span style={{
                           fontSize: 11.5, fontWeight: 600, color: statusColor,
                           display: 'inline-flex', alignItems: 'center', gap: 5,
                         }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor }} />
                           {isUnlimited ? t('unlimited') : t('expiresIn', { days: days ?? 0 })}
+                        </span>
+                      )}
+                      {isExpired && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '2px 8px', borderRadius: 12,
+                          background: 'var(--color-danger-soft)',
+                          color: 'var(--color-danger)',
+                          fontSize: 11, fontWeight: 700,
+                        }}>
+                          <Clock size={11} />
+                          {t('expired')}
                         </span>
                       )}
                     </div>

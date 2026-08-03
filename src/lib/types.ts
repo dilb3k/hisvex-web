@@ -7,6 +7,7 @@ export interface User {
   role: 'admin' | 'superAdmin'
   tier?: 'tekin' | 'bor' | 'pro'
   isPayed?: boolean
+  isActive?: boolean
   businessDayStartHour?: number
   blockCode?: string | null
   subscriptionEndDate?: string | null
