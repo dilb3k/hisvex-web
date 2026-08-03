@@ -3,8 +3,9 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/appStore'
+import { useAuthStore } from '@/lib/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
-import { Package, Plus, Search, Pencil, AlertTriangle, Trash2, X } from 'lucide-react'
+import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { Product } from '@/lib/types'
 import {
@@ -134,6 +135,12 @@ export default function ProductsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  const [showPinVerify, setShowPinVerify] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
+  const pinInputRef = useRef<HTMLInputElement | null>(null)
 
   const [showRestockModal, setShowRestockModal] = useState(false)
   const [restockProduct, setRestockProduct] = useState<Product | null>(null)
@@ -300,8 +307,28 @@ export default function ProductsPage() {
 
   const handleSave = async () => {
     if (!validate()) return
+    if (blockCode) {
+      setPinInput('')
+      setPinVerifyError(null)
+      setShowPinVerify(true)
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+      return
+    }
     await execSave()
   }
+
+  const confirmPin = useCallback((value: string) => {
+    if (value === blockCode) {
+      setShowPinVerify(false)
+      setPinInput('')
+      setPinVerifyError(null)
+      execSave()
+    } else {
+      setPinVerifyError("Blok kod noto'g'ri")
+      setPinInput('')
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+    }
+  }, [blockCode, execSave])
 
   const handleRestock = async () => {
     if (!restockProduct || !restockQty) return
@@ -747,8 +774,9 @@ export default function ProductsPage() {
               <button
                 onClick={handleSave}
                 disabled={isSubmitting}
-                style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
+                style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', gap: 6 }}
               >
+                {blockCode ? <Lock size={14} color="#fff" /> : null}
                 {isSubmitting ? t('loading') : t('save')}
               </button>
             </div>
@@ -917,6 +945,81 @@ export default function ProductsPage() {
                 style={{ ...btnDanger, opacity: isDeleting ? 0.6 : 1, cursor: isDeleting ? 'not-allowed' : 'pointer' }}
               >
                 {isDeleting ? t('loading') : t('delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN Verification for save */}
+      {showPinVerify && (
+        <div style={overlay} onClick={() => setShowPinVerify(false)}>
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            padding: 24,
+            width: 380,
+            border: '1px solid var(--color-border)',
+            textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
+              Mahsulotni saqlash uchun himoya kodini kiriting
+            </div>
+            <input
+              ref={pinInputRef}
+              type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={4}
+              placeholder="••••"
+              value={pinInput}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, '').slice(0, 4)
+                setPinInput(v)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pinInput.length === 4) confirmPin(pinInput)
+              }}
+              onFocus={(e) => e.target.select()}
+              style={{
+                width: '100%',
+                maxWidth: 200,
+                height: 56,
+                borderRadius: 12,
+                border: '1.5px solid var(--color-border)',
+                background: 'var(--color-bg)',
+                color: 'var(--color-text)',
+                fontSize: 26,
+                fontWeight: 700,
+                textAlign: 'center',
+                outline: 'none',
+                letterSpacing: 12,
+                caretColor: 'var(--color-primary)',
+                fontVariantNumeric: 'tabular-nums',
+                marginBottom: 16,
+              }}
+            />
+            {pinVerifyError ? (
+              <div style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 16, minHeight: 18 }}>{pinVerifyError}</div>
+            ) : (
+              <div style={{ minHeight: 18, marginBottom: 16 }} />
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowPinVerify(false)} style={btnSecondary}>Bekor qilish</button>
+              <button
+                onClick={() => confirmPin(pinInput)}
+                disabled={pinInput.length !== 4}
+                style={{
+                  ...btnPrimary, flex: 1,
+                  opacity: pinInput.length === 4 ? 1 : 0.5,
+                  cursor: pinInput.length === 4 ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Tasdiqlash
               </button>
             </div>
           </div>
