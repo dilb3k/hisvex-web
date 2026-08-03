@@ -126,7 +126,7 @@ export default function SettingsPage() {
   const [pinStep, setPinStep] = useState(0)
   const [pinInputs, setPinInputs] = useState<string[]>(['', '', ''])
   const [pinError, setPinError] = useState<string | null>(null)
-  const boxRefs = useRef<(HTMLInputElement | null)[]>([])
+  const blockInputRef = useRef<HTMLInputElement | null>(null)
 
   const blockSteps = blockCode
     ? [t('blockCodeCurrent'), t('blockCodeNew'), t('blockCodeConfirm')]
@@ -134,28 +134,18 @@ export default function SettingsPage() {
 
   const curPin = pinInputs[pinStep] ?? ''
   const isLastStep = pinStep === blockSteps.length - 1
-  const nextBox = Math.min(curPin.length, 4)
 
-  const focusBox = useCallback((i: number) => {
-    const el = boxRefs.current[i]
-    if (el) el.focus()
+  const focusBlockInput = useCallback(() => {
+    setTimeout(() => blockInputRef.current?.focus(), 60)
   }, [])
-
-  const setCurPin = useCallback((v: string) => {
-    setPinInputs((prev) => {
-      const n = [...prev]
-      n[pinStep] = v.slice(0, 4)
-      return n
-    })
-  }, [pinStep])
 
   const openBlockModal = useCallback(() => {
     setPinStep(0)
     setPinInputs(['', '', ''])
     setPinError(null)
     setShowBlockModal(true)
-    setTimeout(() => focusBox(0), 60)
-  }, [focusBox])
+    focusBlockInput()
+  }, [focusBlockInput])
 
   const persistBlockCode = useCallback((code: string | null) => {
     const u = useAuthStore.getState().user
@@ -176,7 +166,7 @@ export default function SettingsPage() {
     if (blockCode && step === 0 && value !== blockCode) {
       setPinError(t('blockCodeWrong'))
       setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
-      setTimeout(() => focusBox(0), 60)
+      focusBlockInput()
       return
     }
 
@@ -188,7 +178,7 @@ export default function SettingsPage() {
         if (b !== c) {
           setPinError(t('blockCodeMismatch'))
           setPinInputs((prev) => { const n = [...prev]; n[2] = ''; return n })
-          setTimeout(() => focusBox(0), 60)
+          focusBlockInput()
           return
         }
         persistBlockCode(b)
@@ -196,7 +186,7 @@ export default function SettingsPage() {
         if (a !== b) {
           setPinError(t('blockCodeMismatch'))
           setPinInputs((prev) => { const n = [...prev]; n[1] = ''; return n })
-          setTimeout(() => focusBox(0), 60)
+          focusBlockInput()
           return
         }
         persistBlockCode(a)
@@ -208,21 +198,21 @@ export default function SettingsPage() {
 
     setPinError(null)
     setPinStep(step + 1)
-    setTimeout(() => focusBox(0), 60)
-  }, [blockCode, persistBlockCode, focusBox, showToast, t])
+    focusBlockInput()
+  }, [blockCode, persistBlockCode, focusBlockInput, showToast, t])
 
   const handleRemoveBlock = useCallback(() => {
     const value = pinInputs[0] ?? ''
     if (value !== blockCode) {
       setPinError(t('blockCodeWrong'))
       setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
-      setTimeout(() => focusBox(0), 60)
+      focusBlockInput()
       return
     }
     persistBlockCode(null)
     setShowBlockModal(false)
     showToast(t('blockCodeRemoved'), 'success')
-  }, [pinInputs, blockCode, persistBlockCode, focusBox, showToast, t])
+  }, [pinInputs, blockCode, persistBlockCode, focusBlockInput, showToast, t])
 
   const userTier = user?.tier ?? 'tekin'
   const pendingHour = getPendingBusinessDayStartHour()
@@ -756,7 +746,7 @@ export default function SettingsPage() {
             <Lock size={20} style={{ color: blockCode ? 'var(--color-warning)' : 'var(--color-text-secondary)' }} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{t('blockCode')}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{t('blockCode')}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
               {blockCode ? t('blockCodeActive') : t('blockCodeInactive')}
             </div>
@@ -961,7 +951,7 @@ export default function SettingsPage() {
                 }}>
                   <Lock size={16} style={{ color: blockCode ? 'var(--color-warning)' : 'var(--color-text-secondary)' }} />
                 </div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('blockCode')}</h3>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>{t('blockCode')}</h3>
               </div>
               <button onClick={() => setShowBlockModal(false)} style={{
                 width: 32, height: 32, borderRadius: 8, border: 'none',
@@ -971,7 +961,7 @@ export default function SettingsPage() {
             </div>
 
             <div style={{ padding: '32px 24px 24px', textAlign: 'center' }}>
-              <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{blockSteps[pinStep]}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text)', marginBottom: 8 }}>{blockSteps[pinStep]}</div>
               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5, minHeight: 20, marginBottom: 28 }}>
                 {!blockCode && pinStep === 0
                   ? t('blockCodePurpose')
@@ -980,61 +970,46 @@ export default function SettingsPage() {
                     : ' '}
               </div>
 
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 22 }}>
-                {[0, 1, 2, 3].map((i) => (
-                  <input
-                    key={i}
-                    ref={(el) => { boxRefs.current[i] = el }}
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={1}
-                    value={curPin[i] ?? ''}
-                    onChange={(e) => {
-                      const d = e.target.value.replace(/\D/g, '').slice(-1)
-                      const chars = curPin.split('')
-                      if (d) chars[i] = d
-                      const nv = chars.join('')
-                      setCurPin(nv)
-                      if (d && i < 3) focusBox(i + 1)
-                      if (d && i === 3) {
-                        const nextInputs = [...pinInputs]
-                        nextInputs[pinStep] = nv
-                        setTimeout(() => handleStepAction(pinStep, nextInputs), 200)
-                      }
-                      if (!d && i > 0) focusBox(i - 1)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Backspace' && !curPin[i] && i > 0) {
-                        e.preventDefault()
-                        focusBox(i - 1)
-                      }
-                      if (e.key === 'Enter' && curPin.length === 4) {
-                        const nextInputs = [...pinInputs]
-                        nextInputs[pinStep] = curPin
-                        handleStepAction(pinStep, nextInputs)
-                      }
-                    }}
-                    style={{
-                      width: 56,
-                      height: 60,
-                      borderRadius: 12,
-                      border: i === nextBox && nextBox < 4
-                        ? '2px solid var(--color-primary)'
-                        : '1.5px solid var(--color-border)',
-                      background: 'var(--color-bg)',
-                      color: 'var(--color-text)',
-                      fontSize: 26,
-                      fontWeight: 600,
-                      textAlign: 'center',
-                      outline: 'none',
-                      caretColor: 'transparent',
-                      fontVariantNumeric: 'tabular-nums',
-                      transition: 'border-color 0.15s ease',
-                    }}
-                  />
-                ))}
-              </div>
+              <input
+                ref={blockInputRef}
+                type="password"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={4}
+                placeholder="••••"
+                value={curPin}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, '').slice(0, 4)
+                  setPinInputs((prev) => { const n = [...prev]; n[pinStep] = v; return n })
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && curPin.length === 4) {
+                    const nextInputs = [...pinInputs]
+                    nextInputs[pinStep] = curPin
+                    handleStepAction(pinStep, nextInputs)
+                  }
+                }}
+                onFocus={(e) => e.target.select()}
+                style={{
+                  width: '100%',
+                  maxWidth: 220,
+                  height: 60,
+                  borderRadius: 12,
+                  border: '1.5px solid var(--color-border)',
+                  background: 'var(--color-bg)',
+                  color: 'var(--color-text)',
+                  fontSize: 28,
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  outline: 'none',
+                  letterSpacing: 14,
+                  caretColor: 'var(--color-primary)',
+                  fontVariantNumeric: 'tabular-nums',
+                  transition: 'border-color 0.15s ease',
+                  marginBottom: 22,
+                }}
+              />
 
               {pinError ? (
                 <div style={{
