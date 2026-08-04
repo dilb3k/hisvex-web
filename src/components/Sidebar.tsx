@@ -71,7 +71,7 @@ export function Sidebar() {
     <>
       {/* ===== DESKTOP SIDEBAR (>=1024px) ===== */}
       <aside className="sidebar-desktop" style={{
-        width: collapsed ? 60 : 220,
+        width: collapsed ? 68 : 260,
         height: '100%', background: 'var(--color-sidebar)',
         borderRight: '1px solid var(--color-border)',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
@@ -79,38 +79,38 @@ export function Sidebar() {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 2,
-          padding: collapsed ? '6px' : '8px 10px',
+          padding: collapsed ? '8px' : '10px 14px',
           borderBottom: '1px solid var(--color-border)',
           flexDirection: collapsed ? 'column' : 'row',
         }}>
           {collapsed ? (
             <>
               <button onClick={() => setCollapsed(false)} style={iconBtn} title="Expand">
-                <ChevronRight size={18} />
+                <ChevronRight size={20} />
               </button>
               <button onClick={handleRefresh} style={iconBtn} title={t('refresh')}>
-                <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+                <RefreshCw size={20} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
               </button>
             </>
           ) : (
             <>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <img src="/logo.png" alt="Hisvex" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <img src="/logo.png" alt="Hisvex" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
               </div>
-              <button onClick={handleRefresh} style={{ ...iconBtn, width: 34, height: 34 }} title={t('refresh')}>
-                <RefreshCw size={16} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+              <button onClick={handleRefresh} style={{ ...iconBtn, width: 36, height: 36 }} title={t('refresh')}>
+                <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
               </button>
-              <button onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 34, height: 34 }} title="Collapse">
-                <ChevronLeft size={16} />
+              <button onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 36, height: 36 }} title="Collapse">
+                <ChevronLeft size={18} />
               </button>
             </>
           )}
         </div>
 
         <nav style={{
-          flex: 1, padding: collapsed ? '8px 6px' : '8px 8px',
-          display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto',
+          flex: 1, padding: collapsed ? '8px 8px' : '10px 10px',
+          display: 'flex', flexDirection: 'column', gap: 3, overflow: 'auto',
         }}>
           {visibleItems.map((item) => (
             collapsed ? (
@@ -118,58 +118,58 @@ export function Sidebar() {
                 key={item.to} href={item.to}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  height: 44, borderRadius: 10, textDecoration: 'none', transition: 'all 0.15s',
+                  height: 48, borderRadius: 12, textDecoration: 'none', transition: 'all 0.15s',
                   color: active(item.to) ? 'var(--color-primary)' : 'var(--color-text-tertiary)',
                   background: active(item.to) ? 'var(--color-primary-soft)' : 'transparent',
                 }}
                 title={t(item.labelKey)}
               >
-                <item.icon size={20} />
+                <item.icon size={22} />
               </Link>
             ) : (
               <Link
                 key={item.to} href={item.to}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 12px', borderRadius: 10, textDecoration: 'none',
-                  fontSize: 13, fontWeight: 500,
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 14px', borderRadius: 12, textDecoration: 'none',
+                  fontSize: 14, fontWeight: 500,
                   color: active(item.to) ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                   background: active(item.to) ? 'var(--color-primary-soft)' : 'transparent',
                   transition: 'all 0.15s',
                 }}
               >
-                <item.icon size={18} />
+                <item.icon size={20} />
                 {t(item.labelKey)}
               </Link>
             )
           ))}
         </nav>
 
-        <div style={{ padding: collapsed ? '6px' : '8px 8px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ padding: collapsed ? '8px' : '10px 10px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {!collapsed && user && (
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 12px', borderRadius: 10,
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 14px', borderRadius: 12,
               background: 'var(--color-surface)', border: '1px solid var(--color-border)',
             }}>
               <div style={{
-                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
                 background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                 color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 700, position: 'relative',
+                fontSize: 14, fontWeight: 700, position: 'relative',
               }}>
                 {getInitials(user.name || user.username)}
                 <span style={{
-                  position: 'absolute', bottom: 0, right: 0, width: 9, height: 9,
+                  position: 'absolute', bottom: 0, right: 0, width: 10, height: 10,
                   borderRadius: '50%', background: '#22c55e',
                   border: '2px solid var(--color-sidebar)',
                 }} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {user.name || user.username}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
                   {user.role === 'superAdmin' ? t('superAdmin') : t('admin')}
                 </div>
               </div>
@@ -177,16 +177,16 @@ export function Sidebar() {
           )}
           {collapsed ? (
             <button onClick={handleLogout} style={{ ...iconBtn, color: 'var(--color-danger)' }} title={t('logout')}>
-              <LogOut size={18} />
+              <LogOut size={20} />
             </button>
           ) : (
             <button onClick={handleLogout} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 12px', borderRadius: 10, width: '100%',
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 14px', borderRadius: 12, width: '100%',
               border: 'none', background: 'transparent',
-              color: 'var(--color-text-tertiary)', fontSize: 13, cursor: 'pointer',
+              color: 'var(--color-text-tertiary)', fontSize: 14, cursor: 'pointer',
             }}>
-              <LogOut size={18} />
+              <LogOut size={20} />
               {t('logout')}
             </button>
           )}
