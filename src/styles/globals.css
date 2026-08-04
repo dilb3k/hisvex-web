@@ -333,7 +333,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .product-card-img img {
-    object-fit: cover;
+  object-fit: contain;
   }
 
   .product-card-mid {
