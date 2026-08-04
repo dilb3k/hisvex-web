@@ -3,17 +3,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/lib/appStore'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
-import dayjs from 'dayjs'
+import { getBusinessDate } from '@/lib/businessDay'
+import { resolveSellPrice, formatMoney } from '@/lib/inventory'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import type { InventoryItem, Product } from '@/lib/types'
-
-const formatMoney = (val?: number) => {
-  if (!val) return '0 so\'m'
-  return val.toLocaleString('uz-UZ') + ' so\'m'
-}
-const getBusinessDate = () => dayjs().format('YYYY-MM-DD')
 
 export default function SalesPage() {
   const { products, refreshAll } = useAppStore()
@@ -80,7 +75,7 @@ export default function SalesPage() {
 
   const totalRevenue = useMemo(() => {
     return cartArray.reduce((sum, { quantity, product, item }) => {
-      const price = item?.sellPrice ?? product?.sellPrice ?? 0
+      const price = resolveSellPrice(item || {}, product)
       return sum + quantity * price
     }, 0)
   }, [cartArray])
@@ -283,7 +278,7 @@ export default function SalesPage() {
               const product = item.product as Product | undefined
               const cartQty = cart[item.productId] || 0
               const isActive = cartQty > 0
-              const price = item.sellPrice ?? product?.sellPrice ?? 0
+              const price = resolveSellPrice(item, product)
 
               return (
                 <div

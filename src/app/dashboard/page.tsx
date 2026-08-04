@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
 import { inventoryApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
+import { getBusinessDate } from '@/lib/businessDay'
+import { resolveSellPrice, resolveBuyPrice } from '@/lib/inventory'
 import dayjs from 'dayjs'
 import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Wallet, ShoppingCart, Percent, Package } from 'lucide-react'
 import { t } from '@/lib/i18n'
@@ -43,15 +45,17 @@ interface ProductRankItem {
   profit: number
 }
 
-function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
+function buildProductRankings(inventoryItems: { sold?: number; realizedProfit?: number; startQuantity?: number; openingQuantity?: number; currentQuantity?: number; product?: { _id?: string; id?: string; name?: string } }[]): ProductRankItem[] {
   const seen = new Map<string, { sold: number; profit: number; name: string }>()
   for (const item of inventoryItems) {
     const p = item.product
     if (!p) continue
     const id = p._id || p.id
     if (!id) continue
+    const opening = item.startQuantity ?? item.openingQuantity ?? 0
+    const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
     const cur = seen.get(id) ?? { sold: 0, profit: 0, name: p.name || 'Noma\'lum' }
-    cur.sold += item.sold ?? 0
+    cur.sold += sold
     cur.profit += item.realizedProfit ?? 0
     seen.set(id, cur)
   }
@@ -112,31 +116,28 @@ const navBtn: React.CSSProperties = {
   transition: 'background 0.2s',
 }
 
-function computeTotals(items: any[]) {
+function computeTotals(items: { sellPrice?: number; buyPrice?: number; price?: number; currentQuantity?: number; sold?: number; realizedProfit?: number; product?: { sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number } }[]) {
   let sold = 0, revenue = 0, profit = 0, remaining = 0
   for (const item of items) {
     const qty = item.currentQuantity ?? 0
-    const p = item.product
-    const sellPrice = item.sellPrice ?? p?.sellingPrice ?? 0
-    const buyPrice = item.buyPrice ?? p?.costPrice ?? 0
+    const sp = resolveSellPrice(item, item.product)
+    const bp = resolveBuyPrice(item, item.product)
     const soldQty = item.sold ?? 0
     sold += soldQty
-    revenue += soldQty * sellPrice
-    profit += item.realizedProfit ?? (soldQty * (sellPrice - buyPrice))
+    revenue += soldQty * sp
+    profit += item.realizedProfit ?? (soldQty * (sp - bp))
     remaining += Math.max(qty, 0)
   }
   const stockSellValue = items.reduce((s, item) => {
     const qty = item.currentQuantity ?? 0
-    const p = item.product
-    const sellPrice = item.sellPrice ?? p?.sellingPrice ?? 0
-    return s + Math.max(qty, 0) * sellPrice
+    const sp = resolveSellPrice(item, item.product)
+    return s + Math.max(qty, 0) * sp
   }, 0)
   const stockProfit = items.reduce((s, item) => {
     const qty = item.currentQuantity ?? 0
-    const p = item.product
-    const sellPrice = item.sellPrice ?? p?.sellingPrice ?? 0
-    const buyPrice = item.buyPrice ?? p?.costPrice ?? 0
-    return s + Math.max(qty, 0) * (sellPrice - buyPrice)
+    const sp = resolveSellPrice(item, item.product)
+    const bp = resolveBuyPrice(item, item.product)
+    return s + Math.max(qty, 0) * (sp - bp)
   }, 0)
   return {
     sellableItems: sold + remaining, soldItems: sold, sellableValue: revenue + stockSellValue,
@@ -173,11 +174,22 @@ export default function StatisticsPage() {
 
   const totals = useMemo(() => {
     const revenue = inventoryItems.reduce((s, item) => {
-      const sellPrice = item.sellPrice ?? item.product?.sellingPrice ?? 0
-      return s + (item.sold ?? 0) * sellPrice
+      const sp = resolveSellPrice(item, item.product)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+      return s + soldQty * sp
     }, 0)
-    const profit = inventoryItems.reduce((s, item) => s + (item.realizedProfit ?? 0), 0)
-    const sold = inventoryItems.reduce((s, item) => s + (item.sold ?? 0), 0)
+    const profit = inventoryItems.reduce((s, item) => {
+      const sp = resolveSellPrice(item, item.product)
+      const bp = resolveBuyPrice(item, item.product)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+      return s + (item.realizedProfit ?? soldQty * (sp - bp))
+    }, 0)
+    const sold = inventoryItems.reduce((s, item) => {
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      return s + (item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0))
+    }, 0)
     return { revenue, profit, sold }
   }, [inventoryItems])
 
@@ -207,9 +219,10 @@ export default function StatisticsPage() {
     for (const item of inventoryItems) {
       const p = item.product
       const name = p?.name || 'Noma\'lum'
-      const buy = item.buyPrice ?? p?.buyPrice ?? 0
-      const sell = item.sellPrice ?? p?.sellPrice ?? 0
-      const sold = item.sold ?? 0
+      const buy = resolveBuyPrice(item, p)
+      const sell = resolveSellPrice(item, p)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
       const revenue = item.revenue ?? sold * sell
       const profit = item.realizedProfit ?? sold * (sell - buy)
       rows.push([name, String(buy), String(sell), String(sold), String(revenue), String(profit)])

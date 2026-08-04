@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
+import { getBusinessDate, isPastBusinessDate, isTodayBusinessDate, isFutureBusinessDate } from '@/lib/businessDay'
+import { resolveSellPrice, resolveBuyPrice } from '@/lib/inventory'
 import dayjs from 'dayjs'
 import { ChevronLeft, ChevronRight, Package, Search } from 'lucide-react'
 import { t } from '@/lib/i18n'
@@ -11,7 +13,6 @@ import type { Product, InventoryItem } from '@/lib/types'
 import { formatMoney, overlay } from '@/lib/sharedStyles'
 
 const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
-const getBusinessDate = () => dayjs().format('YYYY-MM-DD')
 
 interface EnrichedItem {
   product: Product
@@ -71,9 +72,9 @@ export default function InventoryPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const isPastDate = dayjs(selectedDate).isBefore(dayjs(), 'day')
-  const isFutureDate = dayjs(selectedDate).isAfter(dayjs(), 'day')
-  const isEditable = !isPastDate && !isFutureDate
+  const isPastDate = isPastBusinessDate(selectedDate)
+  const isFutureDate = isFutureBusinessDate(selectedDate)
+  const isEditable = isTodayBusinessDate(selectedDate)
   const refreshKey = useAppStore((s) => s.refreshKey)
   const refreshAll = useAppStore((s) => s.refreshAll)
 
@@ -95,12 +96,12 @@ export default function InventoryPage() {
     for (const item of items) {
       const product = item.product
       if (!product) continue
-      const sellPrice = item.sellPrice ?? product.sellingPrice ?? 0
-      const buyPrice = item.buyPrice ?? product.costPrice ?? 0
-      const opening = item.startQuantity ?? 0
+      const sellPrice = resolveSellPrice(item, product)
+      const buyPrice = resolveBuyPrice(item, product)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
       const current = item.currentQuantity ?? 0
       const remaining = Math.max(current, 0)
-      const sold = item.sold ?? 0
+      const sold = item.sold ?? Math.max(opening - current, 0)
       const revenue = item.revenue ?? (sold * sellPrice)
       const realizedProfit = item.realizedProfit ?? (sold * (sellPrice - buyPrice))
       const stockSellValue = remaining * sellPrice
@@ -145,11 +146,20 @@ export default function InventoryPage() {
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
       await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
       clearApiCache()
-      setItems((prev) => prev.map((item) =>
-        (item.productId === productId || item.product?._id === productId)
-          ? { ...item, currentQuantity: newQty }
-          : item
-      ))
+      setItems((prev) => prev.map((item) => {
+        if (item.productId !== productId && item.product?._id !== productId) return item
+        const opening = item.startQuantity ?? item.openingQuantity ?? 0
+        const newSold = Math.max(opening - newQty, 0)
+        const sp = resolveSellPrice(item, item.product)
+        const bp = resolveBuyPrice(item, item.product)
+        return {
+          ...item,
+          currentQuantity: newQty,
+          sold: newSold,
+          revenue: newSold * sp,
+          realizedProfit: newSold * (sp - bp),
+        }
+      }))
       await refreshAll()
       setSaved(true)
       setTimeout(() => closeModal(), 700)

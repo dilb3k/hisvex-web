@@ -18,8 +18,16 @@ export const parseWholeNumber = (value: string): number => {
 export const formatWholeNumber = (value: number): string =>
   value.toLocaleString('uz-UZ')
 
-export const formatMoney = (value: number): string =>
-  `${value.toLocaleString('uz-UZ')} so'm`
+export const formatMoney = (value?: number): string => {
+  if (value == null || Number.isNaN(value) || !Number.isFinite(value)) return "0 so'm"
+  return value.toLocaleString('uz-UZ') + " so'm"
+}
+
+export const resolveSellPrice = (item: { sellPrice?: number; price?: number }, product?: { sellPrice?: number; sellingPrice?: number }): number =>
+  item.sellPrice ?? item.price ?? product?.sellPrice ?? product?.sellingPrice ?? 0
+
+export const resolveBuyPrice = (item: { buyPrice?: number }, product?: { buyPrice?: number; costPrice?: number }): number =>
+  item.buyPrice ?? product?.buyPrice ?? product?.costPrice ?? 0
 
 export const hasValidationErrors = (errors: ProductValidationErrors): boolean =>
   Object.values(errors).some((error) => error !== '')
@@ -53,10 +61,11 @@ export const validateProductInput = (input: {
 export const getInventoryMetrics = (
   item: InventoryItem & { product?: Product },
 ): InventoryMetrics => {
-  const storedSellPrice = item.price ?? item.product?.sellingPrice ?? 0
-  const storedBuyPrice = item.product?.costPrice ?? 0
+  const storedSellPrice = resolveSellPrice(item, item.product)
+  const storedBuyPrice = resolveBuyPrice(item, item.product)
+  const opening = item.startQuantity ?? item.openingQuantity ?? 0
   const remaining = Math.max(item.currentQuantity, 0)
-  const sold = Math.max((item.openingQuantity ?? 0) - item.currentQuantity, 0)
+  const sold = item.sold ?? Math.max(opening - item.currentQuantity, 0)
   const revenue = sold * storedSellPrice
   const realizedProfit = sold * (storedSellPrice - storedBuyPrice)
   const stockSellValue = remaining * storedSellPrice

@@ -3,16 +3,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { debtorsApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
+import { formatMoney } from '@/lib/inventory'
 import { Plus, UserPlus, History, Pencil, Trash2, Search, ArrowLeft } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import type { Debtor, DebtHistory } from '@/lib/types'
 import { formatPhone, displayPhone, formatShortDate, formatInputAmount, parseFormattedAmount, formatAmount } from '@/lib/formatters'
-
-const formatMoney = (val?: number) => {
-  if (!val) return '0 so\'m'
-  return val.toLocaleString('uz-UZ') + ' so\'m'
-}
 
 export default function DebtorsPage() {
   const [debtors, setDebtors] = useState<Debtor[]>([])
@@ -131,6 +127,10 @@ export default function DebtorsPage() {
     setAdjustError('')
     const amount = parseFormattedAmount(adjustAmount)
     if (amount <= 0) return
+    if (type === 'subtract' && amount > selectedDebtor.amount) {
+      setAdjustError('O\'chirilayotgan summa qarzdan katta')
+      return
+    }
     const adjAmount = type === 'subtract' ? -amount : amount
     try {
       await debtorsApi.adjust(selectedDebtor._id, adjAmount)

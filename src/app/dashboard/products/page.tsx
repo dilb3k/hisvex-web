@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
+import { resolveSellPrice, resolveBuyPrice } from '@/lib/inventory'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { PageHeader } from '@/components/PageHeader'
 import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
@@ -322,7 +323,9 @@ export default function ProductsPage() {
     if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { console.error('Invalid restock quantity'); return }
     setIsRestocking(true)
     try {
-      await productsApi.update(restockProduct._id, { quantity: (restockProduct.quantity ?? 0) + qtyToAdd })
+      const { data: freshProduct } = await productsApi.getById(restockProduct._id)
+      const currentQty = freshProduct?.quantity ?? restockProduct.quantity ?? 0
+      await productsApi.update(restockProduct._id, { quantity: currentQty + qtyToAdd })
       closeRestockModal()
       clearApiCache()
       await loadProducts(true)
@@ -440,11 +443,11 @@ export default function ProductsPage() {
 
                   <div className="product-card-prices">
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(item.buyPrice)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(resolveBuyPrice(item, item))}</div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('buy')}</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(item.sellPrice)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(resolveSellPrice(item, item))}</div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('sell')}</div>
                     </div>
                   </div>
@@ -797,7 +800,7 @@ export default function ProductsPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>{restockProduct.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                    {t('buy')}: {formatMoney(restockProduct.buyPrice)} | {t('sell')}: {formatMoney(restockProduct.sellPrice)}
+                    {t('buy')}: {formatMoney(resolveBuyPrice(restockProduct, restockProduct))} | {t('sell')}: {formatMoney(resolveSellPrice(restockProduct, restockProduct))}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginTop: 4 }}>
                     {t('currentStock')}: <span style={{ color: 'var(--color-primary)' }}>{restockProduct.quantity ?? 0}</span>
@@ -834,17 +837,17 @@ export default function ProductsPage() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-primary)' }}>{(restockProduct.quantity ?? 0) + (parseInt(restockQty || '0', 10))}</span>
                   </div>
                   <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-                  {(restockProduct.buyPrice ?? 0) > 0 && (
+                  {resolveBuyPrice(restockProduct, restockProduct) > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('restockCost')}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(parseInt(restockQty || '0', 10) * (restockProduct.buyPrice ?? 0))}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(parseInt(restockQty || '0', 10) * resolveBuyPrice(restockProduct, restockProduct))}</span>
                     </div>
                   )}
-                  {(restockProduct.buyPrice ?? 0) > 0 && (restockProduct.sellPrice ?? 0) > 0 && (
+                  {resolveBuyPrice(restockProduct, restockProduct) > 0 && resolveSellPrice(restockProduct, restockProduct) > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('expectedProfitAmount')}</span>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success)' }}>
-                        {formatMoney(parseInt(restockQty || '0', 10) * ((restockProduct.sellPrice ?? 0) - (restockProduct.buyPrice ?? 0)))}
+                        {formatMoney(parseInt(restockQty || '0', 10) * (resolveSellPrice(restockProduct, restockProduct) - resolveBuyPrice(restockProduct, restockProduct)))}
                       </span>
                     </div>
                   )}

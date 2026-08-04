@@ -118,7 +118,7 @@ export const btnDanger: CSSProperties = {
 }
 
 export const formatMoney = (val?: number) => {
-  if (!val) return "0 so'm"
+  if (val == null || Number.isNaN(val) || !Number.isFinite(val)) return "0 so'm"
   return val.toLocaleString('uz-UZ') + " so'm"
 }
 
