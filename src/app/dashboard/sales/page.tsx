@@ -6,6 +6,7 @@ import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import dayjs from 'dayjs'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
+import { PageHeader } from '@/components/PageHeader'
 import type { InventoryItem, Product } from '@/lib/types'
 
 const formatMoney = (val?: number) => {
@@ -183,6 +184,16 @@ export default function SalesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <PageHeader
+        title={t('sales')}
+        subtitle={t('salesSubtitle')}
+        actions={
+          <button onClick={() => setShowBarcode(true)} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
+            <Scan size={18} />
+          </button>
+        }
+      />
+
       <div style={{ marginBottom: 16 }}>
         <div style={{
           display: 'flex',
@@ -232,8 +243,8 @@ export default function SalesPage() {
         marginBottom: 16,
         padding: '8px 12px',
         borderRadius: 6,
-        background: 'rgba(168,85,247,0.08)',
-        border: '1px solid rgba(168,85,247,0.15)',
+        background: 'var(--color-primary-soft)',
+        border: '1px solid var(--color-border)',
       }}>
         {t('salesHint')}
       </p>
@@ -280,7 +291,7 @@ export default function SalesPage() {
                   style={{
                     borderRadius: 10,
                     border: `1px solid ${isActive ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                    background: isActive ? 'rgba(168,85,247,0.04)' : 'var(--color-surface)',
+                    background: isActive ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                     overflow: 'hidden',
                   }}
                 >
@@ -339,7 +350,7 @@ export default function SalesPage() {
                           height: 32,
                           borderRadius: 8,
                           border: `1px solid ${cartQty > 0 ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                          background: cartQty > 0 ? 'rgba(168,85,247,0.1)' : 'transparent',
+                          background: cartQty > 0 ? 'var(--color-primary-soft)' : 'transparent',
                           color: cartQty > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           cursor: cartQty === 0 ? 'not-allowed' : 'pointer',
                           opacity: cartQty === 0 ? 0.5 : 1,
@@ -368,7 +379,7 @@ export default function SalesPage() {
                           height: 32,
                           borderRadius: 8,
                           border: `1px solid ${cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                          background: cartQty < item.currentQuantity ? 'rgba(168,85,247,0.1)' : 'transparent',
+                          background: cartQty < item.currentQuantity ? 'var(--color-primary-soft)' : 'transparent',
                           color: cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           cursor: cartQty >= item.currentQuantity ? 'not-allowed' : 'pointer',
                           opacity: cartQty >= item.currentQuantity ? 0.5 : 1,
@@ -383,7 +394,7 @@ export default function SalesPage() {
                     <div style={{
                       padding: '6px 14px',
                       borderTop: '1px solid var(--color-border)',
-                      background: 'rgba(168,85,247,0.03)',
+                      background: 'var(--color-primary-soft)',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',

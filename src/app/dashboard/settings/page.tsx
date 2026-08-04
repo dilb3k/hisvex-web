@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/authStore'
 import { useAppStore } from '@/lib/appStore'
 import { adminsApi } from '@/lib/api'
+import { PageHeader } from '@/components/PageHeader'
 import { t, getLanguage, setLanguage } from '@/lib/i18n'
 import type { Language } from '@/lib/i18n'
 import type { User as AdminUser } from '@/lib/types'
@@ -262,7 +263,7 @@ export default function SettingsPage() {
 
   const getTierBg = (tier: string) => {
     switch (tier) {
-      case 'pro': return 'rgba(99,102,241,0.12)'
+      case 'pro': return 'var(--color-primary-soft)'
       case 'bor': return 'rgba(34,197,94,0.12)'
       default: return 'rgba(145,149,166,0.12)'
     }
@@ -291,6 +292,8 @@ export default function SettingsPage() {
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 40 }}>
+      <PageHeader title={t('settings')} subtitle={t('settingsSubtitle')} />
+
       {/* User Info */}
       {user && (
         <div style={sectionStyle}>
@@ -300,7 +303,7 @@ export default function SettingsPage() {
                 width: 48,
                 height: 48,
                 borderRadius: 24,
-                background: 'rgba(99,102,241,0.12)',
+                background: 'var(--color-primary-soft)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -324,7 +327,7 @@ export default function SettingsPage() {
               ...cardStyle,
               borderColor: `${getTierColor(userTier)}40`,
               background: userTier === 'pro'
-                ? 'rgba(99,102,241,0.06)'
+                ? 'var(--color-primary-soft)'
                 : userTier === 'bor'
                   ? 'rgba(34,197,94,0.06)'
                   : 'var(--color-surface)',
@@ -460,7 +463,7 @@ export default function SettingsPage() {
                 onClick={() => handleSetLanguage(lang.code)}
                 style={{
                   ...pillStyle,
-                  background: selected ? 'rgba(99,102,241,0.12)' : 'var(--color-surface)',
+                  background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                   borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,
@@ -489,7 +492,7 @@ export default function SettingsPage() {
                 onClick={() => handleSetTheme(item.code)}
                 style={{
                   ...pillStyle,
-                  background: selected ? 'rgba(99,102,241,0.12)' : 'var(--color-surface)',
+                  background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                   borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,

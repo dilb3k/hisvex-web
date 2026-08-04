@@ -5,6 +5,7 @@ import { debtorsApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { Plus, UserPlus, History, Pencil, Trash2, Search, ArrowLeft } from 'lucide-react'
 import { t } from '@/lib/i18n'
+import { PageHeader } from '@/components/PageHeader'
 import type { Debtor, DebtHistory } from '@/lib/types'
 import { formatPhone, displayPhone, formatShortDate, formatInputAmount, parseFormattedAmount, formatAmount } from '@/lib/formatters'
 
@@ -259,8 +260,8 @@ export default function DebtorsPage() {
           padding: '10px 16px',
           marginBottom: 16,
           borderRadius: 8,
-          background: '#fef3c7',
-          color: '#92400e',
+          background: 'var(--color-warning-soft)',
+          color: 'var(--color-warning)',
           fontSize: 13,
           textAlign: 'center',
           fontWeight: 500,
@@ -269,16 +270,36 @@ export default function DebtorsPage() {
         </div>
       )}
 
+      <PageHeader
+        title={t('debtors')}
+        subtitle={t('debtorsSubtitle')}
+        actions={
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="btn btn-primary"
+          >
+            <UserPlus size={16} />
+            {t('addDebtor')}
+          </button>
+        }
+      />
+
       <div style={{
-        background: 'var(--color-primary)',
-        borderRadius: 12,
-        padding: '20px 24px',
-        marginBottom: 20,
+        background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4c1d95 100%)',
+        borderRadius: 16,
+        padding: '22px 26px',
+        marginBottom: 16,
+        position: 'relative',
+        overflow: 'hidden',
       }}>
-        <div style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>
+        <div style={{ position: 'absolute', top: -40, right: -30, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
+        <div style={{ position: 'relative', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 1 }}>
+          {t('totalDebt')}
+        </div>
+        <div style={{ position: 'relative', fontSize: 30, fontWeight: 800, color: '#fff', marginTop: 4, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>
           {formatMoney(totalDebt)}
         </div>
-        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
+        <div style={{ position: 'relative', fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 6 }}>
           {debtors.length} {t('debtors')}
         </div>
       </div>
@@ -309,26 +330,6 @@ export default function DebtorsPage() {
             }}
           />
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: 'none',
-            background: 'var(--color-primary)',
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <UserPlus size={16} />
-          {t('addDebtor')}
-        </button>
       </div>
 
       {filtered.length === 0 ? (
@@ -390,7 +391,7 @@ export default function DebtorsPage() {
               <div style={{
                 fontSize: 15,
                 fontWeight: 700,
-                color: '#ef4444',
+                color: 'var(--color-danger)',
                 whiteSpace: 'nowrap',
               }}>
                 {formatMoney(debtor.amount)}
@@ -422,7 +423,7 @@ export default function DebtorsPage() {
                 style={inputStyle}
               />
               {addNameError && (
-                <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{addNameError}</div>
+                <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 4 }}>{addNameError}</div>
               )}
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -437,7 +438,7 @@ export default function DebtorsPage() {
                 style={inputStyle}
               />
               {addAmountError && (
-                <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{addAmountError}</div>
+                <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 4 }}>{addAmountError}</div>
               )}
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -495,7 +496,7 @@ export default function DebtorsPage() {
             <button onClick={handleEditFromDetail} style={iconBtnStyle} title={t('edit')}>
               <Pencil size={18} />
             </button>
-            <button onClick={handleDeleteFromDetail} style={{ ...iconBtnStyle, color: '#ef4444' }} title={t('delete')}>
+            <button onClick={handleDeleteFromDetail} style={{ ...iconBtnStyle, color: 'var(--color-danger)' }} title={t('delete')}>
               <Trash2 size={18} />
             </button>
           </div>
@@ -518,16 +519,16 @@ export default function DebtorsPage() {
             </div>
 
             <div style={{
-              background: 'rgba(239,68,68,0.1)',
+              background: 'var(--color-danger-soft)',
               borderRadius: 12,
               padding: '16px 20px',
               marginBottom: 24,
               border: '1px solid rgba(239,68,68,0.2)',
             }}>
-              <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 500, marginBottom: 4 }}>
+              <div style={{ fontSize: 12, color: 'var(--color-danger)', fontWeight: 500, marginBottom: 4 }}>
                 {t('debtAmount')}
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-danger)' }}>
                 {formatMoney(selectedDebtor.amount)}
               </div>
             </div>
@@ -567,7 +568,7 @@ export default function DebtorsPage() {
                         width: 8,
                         height: 8,
                         borderRadius: '50%',
-                        background: isAdd ? '#ef4444' : '#22c55e',
+                        background: isAdd ? 'var(--color-danger)' : 'var(--color-success)',
                         marginTop: 5,
                         flexShrink: 0,
                       }} />
@@ -576,7 +577,7 @@ export default function DebtorsPage() {
                           <span style={{
                             fontSize: 13,
                             fontWeight: 500,
-                            color: isAdd ? '#ef4444' : '#22c55e',
+                            color: isAdd ? 'var(--color-danger)' : 'var(--color-success)',
                           }}>
                             {isAdd ? t('added') : t('subtracted')}
                           </span>
@@ -593,7 +594,7 @@ export default function DebtorsPage() {
                       <div style={{
                         fontSize: 14,
                         fontWeight: 600,
-                        color: isAdd ? '#ef4444' : '#22c55e',
+                        color: isAdd ? 'var(--color-danger)' : 'var(--color-success)',
                         whiteSpace: 'nowrap',
                         flexShrink: 0,
                       }}>
@@ -615,7 +616,7 @@ export default function DebtorsPage() {
             flexShrink: 0,
           }}>
             {adjustError && (
-              <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 8, textAlign: 'center' }}>
                 {adjustError}
               </div>
             )}
@@ -640,7 +641,7 @@ export default function DebtorsPage() {
                 padding: '10px 20px',
                 borderRadius: 8,
                 border: 'none',
-                background: '#ef4444',
+                background: 'var(--color-danger)',
                 color: '#fff',
                 fontSize: 13,
                 fontWeight: 600,
@@ -656,7 +657,7 @@ export default function DebtorsPage() {
                 padding: '10px 20px',
                 borderRadius: 8,
                 border: 'none',
-                background: '#22c55e',
+                background: 'var(--color-success)',
                 color: '#fff',
                 fontSize: 13,
                 fontWeight: 600,
@@ -693,7 +694,7 @@ export default function DebtorsPage() {
                 style={inputStyle}
               />
               {editNameError && (
-                <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{editNameError}</div>
+                <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 4 }}>{editNameError}</div>
               )}
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -783,7 +784,7 @@ export default function DebtorsPage() {
                   padding: '8px 16px',
                   borderRadius: 6,
                   border: 'none',
-                  background: '#ef4444',
+                  background: 'var(--color-danger)',
                   color: '#fff',
                   fontSize: 13,
                   fontWeight: 600,

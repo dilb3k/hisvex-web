@@ -6,6 +6,7 @@ import { useAppStore } from '@/lib/appStore'
 import dayjs from 'dayjs'
 import { ChevronLeft, ChevronRight, Package, Search } from 'lucide-react'
 import { t } from '@/lib/i18n'
+import { PageHeader } from '@/components/PageHeader'
 import type { Product, InventoryItem } from '@/lib/types'
 import { formatMoney, overlay } from '@/lib/sharedStyles'
 
@@ -28,13 +29,12 @@ interface EnrichedItem {
 }
 
 function getStockStatus(remaining: number) {
-  if (remaining <= 0) return { label: 'Tugagan', color: 'var(--color-danger)' }
-  if (remaining <= 5) return { label: 'Kam', color: 'var(--color-warning)' }
-  return { label: 'Bor', color: 'var(--color-success)' }
+  if (remaining <= 0) return { label: 'Tugagan', color: 'var(--color-danger)', cls: 'badge badge-danger' }
+  if (remaining <= 5) return { label: 'Kam', color: 'var(--color-warning)', cls: 'badge badge-warning' }
+  return { label: 'Bor', color: 'var(--color-success)', cls: 'badge badge-success' }
 }
 
 const s: Record<string, React.CSSProperties> = {
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   title: { fontSize: 20, fontWeight: 700 },
   dateNav: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, justifyContent: 'center' },
   dateNavBtn: { width: 34, height: 34, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
@@ -197,13 +197,10 @@ export default function InventoryPage() {
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>{entry.product.name}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 1 }}>{formatMoney(entry.sellPrice)}</div>
           </div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20,
-            fontSize: 11, fontWeight: 600, background: `${status.color}18`, color: status.color, whiteSpace: 'nowrap',
-          }}>
+          <span className={status.cls} style={{ gap: 4 }}>
             <span style={{ width: 6, height: 6, borderRadius: 3, background: status.color }} />
             {status.label}
-          </div>
+          </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('start')}</div><div style={{ fontSize: 13, fontWeight: 600 }}>{entry.opening}</div></div>
@@ -233,13 +230,10 @@ export default function InventoryPage() {
               <div style={s.modalTitle}>{selectedEntry.product.name}</div>
               <div style={s.modalPrice}>{formatMoney(selectedEntry.sellPrice)}</div>
             </div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20,
-              fontSize: 11, fontWeight: 600, background: `${status.color}18`, color: status.color, whiteSpace: 'nowrap',
-            }}>
+            <span className={status.cls} style={{ gap: 4 }}>
               <span style={{ width: 6, height: 6, borderRadius: 3, background: status.color }} />
               {status.label}
-            </div>
+            </span>
           </div>
 
           {isPastDate ? (
@@ -268,19 +262,12 @@ export default function InventoryPage() {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-            <button onClick={closeModal} style={{
-              padding: '8px 16px', borderRadius: 6, border: '1px solid var(--color-border)',
-              background: 'transparent', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer',
-            }}>{t('back')}</button>
+            <button onClick={closeModal} className="btn btn-secondary">{t('back')}</button>
             {!isPastDate && (
               <button
                 onClick={handleSave} disabled={saving}
-                style={{
-                  padding: '8px 16px', borderRadius: 6, border: 'none',
-                  background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600,
-                  cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
-                  display: saved ? 'none' : undefined,
-                }}
+                className="btn btn-primary"
+                style={saved ? { display: 'none' } : undefined}
               >{saving ? t('loading_data') : t('save')}</button>
             )}
             {saved && <span style={s.savedBadge}>{t('success')}</span>}
@@ -302,10 +289,10 @@ export default function InventoryPage() {
 
   const content = () => (
     <>
-      <div style={s.header}>
-        <h2 style={s.title}>{t('inventory')}</h2>
-        {isPastDate && <span style={s.readOnlyBadge}>{t('readOnly')}</span>}
-      </div>
+      <PageHeader
+        title={t('inventory')}
+        actions={isPastDate ? <span className="badge badge-danger">{t('readOnly')}</span> : undefined}
+      />
       {renderDateNav()}
       {renderSearch()}
       <div style={s.summaryRow}>
@@ -332,7 +319,7 @@ export default function InventoryPage() {
   if (isFutureDate) {
     return (
       <div>
-        <div style={s.header}><h2 style={s.title}>{t('inventory')}</h2></div>
+        <PageHeader title={t('inventory')} />
         {renderDateNav()}
         <div style={s.emptyWrap}>
           <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
@@ -346,7 +333,7 @@ export default function InventoryPage() {
   if (loading && items.length === 0) {
     return (
       <div>
-        <div style={s.header}><h2 style={s.title}>{t('inventory')}</h2></div>
+        <PageHeader title={t('inventory')} />
         {renderDateNav()}
         <div style={s.spinnerWrap}><div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
       </div>

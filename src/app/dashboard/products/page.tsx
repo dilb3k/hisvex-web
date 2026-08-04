@@ -6,6 +6,7 @@ import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
+import { PageHeader } from '@/components/PageHeader'
 import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { Product } from '@/lib/types'
@@ -79,18 +80,6 @@ const EMPTY_FORM: ProductForm = {
 
 const EMPTY_ERRORS: ValidationErrors = { name: '', buyPrice: '', sellPrice: '', quantity: '' }
 
-const btnIcon: React.CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 10,
-  border: 'none',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  transition: 'all 0.15s',
-}
-
 const spinner = (size = 32): React.CSSProperties => ({
   width: size,
   height: size,
@@ -99,19 +88,6 @@ const spinner = (size = 32): React.CSSProperties => ({
   borderRadius: '50%',
   animation: 'spin 0.8s linear infinite',
 })
-
-const pageHeader: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 20,
-}
-
-const pageTitle: React.CSSProperties = {
-  fontSize: 22,
-  fontWeight: 700,
-  margin: 0,
-}
 
 const inputError: React.CSSProperties = {
   ...inputBase,
@@ -375,36 +351,31 @@ export default function ProductsPage() {
 
   return (
     <div style={{ padding: 0 }}>
-      <div style={pageHeader}>
-        <h2 style={pageTitle}>{t('products')}</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
-            <input
-              type="text"
-              placeholder={t('search')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                ...inputBase,
-                paddingLeft: 36,
-                width: 240,
-                borderRadius: 10,
-              }}
-            />
-          </div>
-          <button
-            onClick={openCreate}
-            style={{
-              ...btnIcon,
-              background: 'var(--color-primary)',
-            }}
-            title={t('addProduct')}
-          >
-            <Plus size={20} color="#fff" />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t('products')}
+        actions={
+          <>
+            <div style={{ position: 'relative' }}>
+              <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder={t('search')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="search-input"
+                style={{ paddingLeft: 36, width: 240 }}
+              />
+            </div>
+            <button
+              onClick={openCreate}
+              className="btn btn-primary btn-icon"
+              title={t('addProduct')}
+            >
+              <Plus size={20} />
+            </button>
+          </>
+        }
+      />
 
       {isLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
@@ -424,13 +395,8 @@ export default function ProductsPage() {
           {!debouncedSearch && (
             <button
               onClick={openCreate}
-              style={{
-                ...btnPrimary,
-                marginTop: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
+              className="btn btn-primary"
+              style={{ marginTop: 4 }}
             >
               <Plus size={16} />
               {t('addProduct')}
