@@ -2,7 +2,7 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
-import type { AuthResponse, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
+import type { AuthResponse, AuthSuccess, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
 import { getBusinessDate } from './businessDay'
 
 interface InventoryResponse {
@@ -124,7 +124,7 @@ api.interceptors.response.use(
   async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     const url = originalRequest?.url ?? ''
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
+    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
     if (error.response?.status === 401 && !isAuthEndpoint && apiRefreshToken && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true
@@ -183,7 +183,14 @@ api.interceptors.response.use(
 
 export const authApi = {
   login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password }),
-  register: (username: string, password: string, phone_number?: string) => api.post<AuthResponse>('/auth/register', { username, password, phone_number }),
+  loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number }),
+  register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number) => api.post<AuthSuccess>('/auth/register', {
+    username,
+    password,
+    phone_number,
+    ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
+  }),
+  logout: () => api.post('/auth/logout'),
   getMe: () => api.get<User>('/auth/me'),
   updateMe: (data: Partial<User>) => api.put('/auth/me', data),
 }

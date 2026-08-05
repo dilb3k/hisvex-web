@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { setApiToken, setRefreshToken, clearApiCache } from './api'
+import { setApiToken, setRefreshToken, clearApiCache, authApi } from './api'
 import type { User } from './types'
 
 const STORAGE_KEY_TOKEN = 'hisvex_token'
@@ -79,7 +79,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     persistUser(user)
     set({ user })
   },
-  logout: () => {
+  logout: async () => {
+    try {
+      await authApi.logout()
+    } catch {
+      // Best-effort: clearing local session is what matters
+    }
     setApiToken(null)
     setRefreshToken('')
     clearApiCache()
