@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { debtorsApi } from '@/lib/api'
+import { debtorsApi, clearApiCache } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { formatMoney } from '@/lib/inventory'
 import { Plus, UserPlus, History, Pencil, Trash2, Search, ArrowLeft } from 'lucide-react'
@@ -118,6 +118,7 @@ export default function DebtorsPage() {
       await debtorsApi.delete(selectedDebtor._id)
       setShowDeleteConfirm(false)
       setSelectedDebtor(null)
+      clearApiCache()
       loadDebtors()
     } catch (err) { console.error('Debtor delete error:', err) }
   }
@@ -134,6 +135,7 @@ export default function DebtorsPage() {
     const adjAmount = type === 'subtract' ? -amount : amount
     try {
       await debtorsApi.adjust(selectedDebtor._id, adjAmount)
+      clearApiCache()
       const { data } = await debtorsApi.getAll()
       setDebtors(data)
       const updated = data.find((d) => d._id === selectedDebtor._id)
@@ -168,6 +170,7 @@ export default function DebtorsPage() {
         notes: addNotes || undefined,
       })
       setShowAddModal(false)
+      clearApiCache()
       loadDebtors()
     } catch {
       setAddNameError(t('error') || 'Xatolik yuz berdi')
@@ -189,6 +192,7 @@ export default function DebtorsPage() {
       })
       setShowEditModal(false)
       setSelectedDebtor(null)
+      clearApiCache()
       loadDebtors()
     } catch {
       setEditNameError(t('error') || 'Xatolik yuz berdi')

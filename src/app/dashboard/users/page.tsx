@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAuthStore } from '@/lib/authStore'
 import { useAppStore } from '@/lib/appStore'
-import { adminsApi } from '@/lib/api'
+import { adminsApi, clearApiCache } from '@/lib/api'
 import {
   Users, CreditCard, Shield, Pencil, Trash2, X, Search, Clock, Crown,
   UserPlus, RefreshCw, LogOut, Phone, CalendarDays, Sparkles,
@@ -166,13 +166,13 @@ export default function UsersPage() {
     try {
       const { data } = await adminsApi.getAll()
       setAdmins(data)
-    } catch {
-      // handled globally
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [user?.role])
+  }, [user?.role, showToast, t])
 
   useEffect(() => {
     loadAdmins()
@@ -214,18 +214,21 @@ export default function UsersPage() {
 
   const handleCreated = () => {
     setCreateOpen(false)
+    clearApiCache()
     loadAdmins(true)
     showToast(t('adminCreated'), 'success')
   }
 
   const handleUpdated = () => {
     setEditTarget(null)
+    clearApiCache()
     loadAdmins(true)
     showToast(t('adminUpdated'), 'success')
   }
 
   const handleDeleted = () => {
     setDeleteTarget(null)
+    clearApiCache()
     loadAdmins(true)
     showToast(t('adminDeleted'), 'success')
   }
@@ -236,10 +239,11 @@ export default function UsersPage() {
     const next = admin.isActive === false
     try {
       await adminsApi.update(admin._id, { isActive: next })
+      clearApiCache()
       setAdmins((prev) => prev.map((a) => (a._id === admin._id ? { ...a, isActive: next } : a)))
       showToast(next ? t('adminActivated') : t('adminDeactivated'), 'success')
-    } catch {
-      // handled globally
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setTogglingId(null)
     }
@@ -721,6 +725,7 @@ function AdminFormModal({
   const [phoneNumber, setPhoneNumber] = useState(admin?.phone_number ? formatPhone(admin.phone_number) : '+998')
   const [tier, setTier] = useState<User['tier']>(admin?.tier || 'bor')
   const [saving, setSaving] = useState(false)
+  const showToast = useAppStore((s) => s.showToast)
 
   const isEdit = !!admin
 
@@ -738,8 +743,8 @@ function AdminFormModal({
         await adminsApi.create(username.trim(), password, tier || 'bor', (phoneNumber || '').replace(/\D/g, '') || undefined)
       }
       onSaved()
-    } catch {
-      // handled globally
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setSaving(false)
     }
@@ -937,14 +942,15 @@ function DeleteConfirmModal({
   onDeleted: () => void
 }) {
   const [deleting, setDeleting] = useState(false)
+  const showToast = useAppStore((s) => s.showToast)
 
   const handleDelete = async () => {
     setDeleting(true)
     try {
       await adminsApi.delete(admin._id)
       onDeleted()
-    } catch {
-      // handled globally
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setDeleting(false)
     }

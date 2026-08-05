@@ -19,7 +19,9 @@ export default function SalesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [barcodeError, setBarcodeError] = useState('')
   const [success, setSuccess] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
 
   const loadInventory = useCallback(async () => {
@@ -113,15 +115,19 @@ export default function SalesPage() {
 
     const product = products.find(p => p.barcodes?.includes(code))
     if (!product) {
-      setBarcodeInput('')
-      setShowBarcode(false)
+      setBarcodeError(t('barcodeNotFound') || 'Barcode bo\'yicha mahsulot topilmadi')
       return
     }
 
     const invItem = inventoryItems.find(i => i.productId === product._id)
     if (!invItem || invItem.currentQuantity <= 0) {
-      setBarcodeInput('')
-      setShowBarcode(false)
+      setBarcodeError(t('noStock'))
+      return
+    }
+
+    const inCart = cart[product._id] || 0
+    if (inCart >= invItem.currentQuantity) {
+      setBarcodeError(t('noStock'))
       return
     }
 
@@ -132,8 +138,9 @@ export default function SalesPage() {
     })
 
     setBarcodeInput('')
+    setBarcodeError('')
     setShowBarcode(false)
-  }, [barcodeInput, products, inventoryItems])
+  }, [barcodeInput, products, inventoryItems, cart])
 
   const handleConfirmSale = useCallback(async () => {
     if (totalPieces === 0 || submitting) return
@@ -150,10 +157,12 @@ export default function SalesPage() {
       await refreshAll()
       setCart({})
       setSuccess(t('salesSuccess'))
+      setError(null)
       setTimeout(() => setSuccess(null), 3000)
     } catch {
-      setSuccess(t('error') || 'Xatolik yuz berdi')
-      setTimeout(() => setSuccess(null), 3000)
+      setSuccess(null)
+      setError(t('error') || 'Xatolik yuz berdi')
+      setTimeout(() => setError(null), 3000)
     } finally {
       setSubmitting(false)
     }
@@ -183,7 +192,7 @@ export default function SalesPage() {
         title={t('sales')}
         subtitle={t('salesSubtitle')}
         actions={
-          <button onClick={() => setShowBarcode(true)} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
+          <button onClick={() => { setShowBarcode(true); setBarcodeError('') }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
             <Scan size={18} />
           </button>
         }
@@ -254,6 +263,19 @@ export default function SalesPage() {
           marginBottom: 16,
         }}>
           {success}
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: 6,
+          background: 'rgba(239,68,68,0.1)',
+          color: 'var(--color-danger)',
+          fontSize: 13,
+          marginBottom: 16,
+        }}>
+          {error}
         </div>
       )}
 
@@ -449,6 +471,11 @@ export default function SalesPage() {
                 boxSizing: 'border-box',
               }}
             />
+            {barcodeError && (
+              <p style={{ color: 'var(--color-danger)', fontSize: 13, margin: '-8px 0 12px' }}>
+                {barcodeError}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleBarcodeSubmit}
@@ -538,7 +565,7 @@ export default function SalesPage() {
             {t('cancel')}
           </button>
           <button
-            onClick={() => setShowBarcode(true)}
+            onClick={() => { setShowBarcode(true); setBarcodeError('') }}
             style={{
               display: 'flex',
               alignItems: 'center',

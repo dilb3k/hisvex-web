@@ -45,7 +45,7 @@ interface ProductRankItem {
   profit: number
 }
 
-function buildProductRankings(inventoryItems: { sold?: number; realizedProfit?: number; startQuantity?: number; openingQuantity?: number; currentQuantity?: number; product?: { _id?: string; id?: string; name?: string } }[]): ProductRankItem[] {
+function buildProductRankings(inventoryItems: { sold?: number; realizedProfit?: number; startQuantity?: number; openingQuantity?: number; currentQuantity?: number; sellPrice?: number; price?: number; buyPrice?: number; product?: { _id?: string; id?: string; name?: string; sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number } }[]): ProductRankItem[] {
   const seen = new Map<string, { sold: number; profit: number; name: string }>()
   for (const item of inventoryItems) {
     const p = item.product
@@ -56,7 +56,9 @@ function buildProductRankings(inventoryItems: { sold?: number; realizedProfit?: 
     const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
     const cur = seen.get(id) ?? { sold: 0, profit: 0, name: p.name || 'Noma\'lum' }
     cur.sold += sold
-    cur.profit += item.realizedProfit ?? 0
+    const sp = resolveSellPrice(item, p)
+    const bp = resolveBuyPrice(item, p)
+    cur.profit += item.realizedProfit ?? (sold * (sp - bp))
     seen.set(id, cur)
   }
   return Array.from(seen.entries()).map(([id, totals]) => ({ id, name: totals.name, sold: totals.sold, profit: totals.profit }))
@@ -116,13 +118,13 @@ const navBtn: React.CSSProperties = {
   transition: 'background 0.2s',
 }
 
-function computeTotals(items: { sellPrice?: number; buyPrice?: number; price?: number; currentQuantity?: number; sold?: number; realizedProfit?: number; product?: { sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number } }[]) {
+function computeTotals(items: { sellPrice?: number; buyPrice?: number; price?: number; currentQuantity?: number; startQuantity?: number; openingQuantity?: number; sold?: number; realizedProfit?: number; product?: { sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number } }[]) {
   let sold = 0, revenue = 0, profit = 0, remaining = 0
   for (const item of items) {
     const qty = item.currentQuantity ?? 0
     const sp = resolveSellPrice(item, item.product)
     const bp = resolveBuyPrice(item, item.product)
-    const soldQty = item.sold ?? 0
+    const soldQty = item.sold ?? Math.max((item.startQuantity ?? item.openingQuantity ?? 0) - qty, 0)
     sold += soldQty
     revenue += soldQty * sp
     profit += item.realizedProfit ?? (soldQty * (sp - bp))
@@ -148,12 +150,12 @@ function computeTotals(items: { sellPrice?: number; buyPrice?: number; price?: n
 
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<Period>('daily')
-  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [inventoryItems, setInventoryItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showAllTime, setShowAllTime] = useState(false)
-  const [allTimeFrom, setAllTimeFrom] = useState(dayjs().subtract(1, 'year').format('YYYY-MM-DD'))
-  const [allTimeTo, setAllTimeTo] = useState(dayjs().format('YYYY-MM-DD'))
+  const [allTimeFrom, setAllTimeFrom] = useState(() => dayjs(getBusinessDate()).subtract(1, 'year').format('YYYY-MM-DD'))
+  const [allTimeTo, setAllTimeTo] = useState(getBusinessDate)
   const [allTimeItems, setAllTimeItems] = useState<any[] | null>(null)
   const [allTimeLoading, setAllTimeLoading] = useState(false)
   const refreshKey = useAppStore((s) => s.refreshKey)
@@ -202,6 +204,7 @@ export default function StatisticsPage() {
   const allProductStats = useMemo(() => buildProductRankings(inventoryItems), [inventoryItems])
   const topProducts = useMemo(() => allProductStats.filter((p) => p.sold > 0).sort((a, b) => b.sold - a.sold || b.profit - a.profit), [allProductStats])
   const leastProducts = useMemo(() => [...allProductStats].sort((a, b) => a.sold - b.sold || a.profit - b.profit), [allProductStats])
+  const maxLeastSold = useMemo(() => Math.max(...leastProducts.map((p) => p.sold), 1), [leastProducts])
   const allTimeTotals = useMemo(() => { if (!allTimeItems) return null; return computeTotals(allTimeItems) }, [allTimeItems])
 
   const fetchAllTime = useCallback(async (from: string, to: string) => {
@@ -242,8 +245,8 @@ export default function StatisticsPage() {
 
   const handleOpenAllTime = useCallback(async () => {
     setShowAllTime(true)
-    const from = dayjs().subtract(5, 'year').format('YYYY-MM-DD')
-    const to = dayjs().format('YYYY-MM-DD')
+    const from = dayjs(getBusinessDate()).subtract(5, 'year').format('YYYY-MM-DD')
+    const to = getBusinessDate()
     setAllTimeFrom(from); setAllTimeTo(to)
     await fetchAllTime(from, to)
   }, [fetchAllTime])
@@ -421,8 +424,7 @@ export default function StatisticsPage() {
               <TrendingUp size={18} color="var(--color-success)" />
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{t('topProductsLabel')}</h3>
             </div>
-            {topProducts.length > 0 ? topProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, false, topProducts[0]?.sold)) : <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '12px 0', margin: 0 }}>{t('noProductsPeriod')}</p>}
-          </div>
+            {topProducts.length > 0 ? topProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, false, topProducts[0]?.sold)) : <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '12px 0', margin: 0 }}>{t('noProductsPeriod')}</p>}          </div>
 
           {leastProducts.length > 0 && (
             <div style={{ ...CARD, borderColor: 'rgba(239,68,68,0.33)', background: 'rgba(239,68,68,0.03)' }}>
@@ -431,7 +433,7 @@ export default function StatisticsPage() {
                 <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{t('leastSold')}</h3>
               </div>
               <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: -8, marginBottom: 12 }}>{t('blackListSubtitle')}</p>
-              {leastProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, true, leastProducts[0]?.sold))}
+              {leastProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, true, maxLeastSold))}
             </div>
           )}
         </>

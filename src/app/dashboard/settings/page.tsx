@@ -246,7 +246,8 @@ export default function SettingsPage() {
   const handleSaveBusinessDay = useCallback(() => {
     scheduleBusinessDayStartHour(editingHour)
     setShowBusinessDay(false)
-  }, [editingHour])
+    showToast(t('businessDaySaved'), 'success')
+  }, [editingHour, showToast, t])
 
   const formatHourRange = (hour: number) => {
     if (hour === 0) return '00:00 dan 23:59 gacha'

@@ -77,6 +77,7 @@ export default function InventoryPage() {
   const isEditable = isTodayBusinessDate(selectedDate)
   const refreshKey = useAppStore((s) => s.refreshKey)
   const refreshAll = useAppStore((s) => s.refreshAll)
+  const storeProducts = useAppStore((s) => s.products)
 
   useEffect(() => {
     if (isFutureDate) { setItems([]); setLoading(false); return }
@@ -92,9 +93,10 @@ export default function InventoryPage() {
   }, [selectedDate, isFutureDate, refreshKey])
 
   const combinedData = useMemo(() => {
+    const productMap = new Map(storeProducts.map((p) => [p._id, p]))
     const result: EnrichedItem[] = []
     for (const item of items) {
-      const product = item.product
+      const product = item.product || productMap.get(item.productId || '')
       if (!product) continue
       const sellPrice = resolveSellPrice(item, product)
       const buyPrice = resolveBuyPrice(item, product)
@@ -118,7 +120,7 @@ export default function InventoryPage() {
       return ia !== ib ? ia - ib : (a.product.name || '').localeCompare(b.product.name || '')
     })
     return result
-  }, [items])
+  }, [items, storeProducts])
 
   const filteredItems = useMemo(() => {
     if (!search.trim()) return combinedData

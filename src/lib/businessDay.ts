@@ -25,6 +25,9 @@ export function initBusinessDay() {
 
 export const setBusinessDayStartHour = (hour: number) => {
   activeHour = hour
+  if (typeof window !== 'undefined') {
+    try { localStorage.setItem('hisvex_business_hour', String(hour)) } catch {}
+  }
 }
 
 export const getBusinessDayStartHour = () => {
@@ -55,6 +58,12 @@ export const getEffectiveFrom = () => effectiveFrom
 export const clearPending = () => {
   pendingHour = null
   effectiveFrom = null
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('hisvex_pending_hour')
+      localStorage.removeItem('hisvex_pending_from')
+    } catch {}
+  }
 }
 
 function applyPendingIfNeeded() {
@@ -63,6 +72,13 @@ function applyPendingIfNeeded() {
     activeHour = pendingHour
     pendingHour = null
     effectiveFrom = null
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('hisvex_business_hour', String(activeHour))
+        localStorage.removeItem('hisvex_pending_hour')
+        localStorage.removeItem('hisvex_pending_from')
+      } catch {}
+    }
   }
 }
 

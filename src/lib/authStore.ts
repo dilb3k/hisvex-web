@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { setApiToken, setRefreshToken } from './api'
+import { setApiToken, setRefreshToken, clearApiCache } from './api'
 import type { User } from './types'
 
 const STORAGE_KEY_TOKEN = 'hisvex_token'
@@ -82,6 +82,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     setApiToken(null)
     setRefreshToken('')
+    clearApiCache()
     clearPersistedToken()
     set({ token: '', refreshToken: '', user: null, isAuthenticated: false })
   },
