@@ -97,8 +97,10 @@ const inputError: React.CSSProperties = {
 
 export default function ProductsPage() {
   const router = useRouter()
-  const { products, loadProducts } = useAppStore()
+  const products = useAppStore((s) => s.products)
+  const loadProducts = useAppStore((s) => s.loadProducts)
   const storeLoading = useAppStore((s) => s.loading.products)
+  const showToast = useAppStore((s) => s.showToast)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -240,6 +242,15 @@ export default function ProductsPage() {
     setForm((prev) => ({ ...prev, barcodes: prev.barcodes.filter((_, i) => i !== index) }))
   }
 
+  // Stable reference so BarcodeScannerModal's camera-owning effect (which depends on
+  // this prop) doesn't tear down and reinitialize the camera on unrelated re-renders.
+  const checkBarcodeConflict = useCallback((code: string) => {
+    const dup = products.find(
+      (p) => p.barcodes?.includes(code) && p._id !== editingProduct?._id
+    )
+    return dup ? { conflictName: dup.name } : null
+  }, [products, editingProduct])
+
   const validate = () => {
     const next = validateProductInput({
       name: form.name.trim(),
@@ -257,7 +268,7 @@ export default function ProductsPage() {
       for (const code of barcodes) {
         const dup = products.find((p) => p.barcodes?.includes(code) && p._id !== editingProduct?._id)
         if (dup) {
-          console.error(`Duplicate barcode: "${dup.name}" already uses code ${code}`)
+          showToast(`"${dup.name}" allaqachon bu (${code}) barcode dan foydalanmoqda`, 'error')
           return false
         }
       }
@@ -286,11 +297,15 @@ export default function ProductsPage() {
       return true
     } catch (err: unknown) {
       console.error('Product save error:', err)
+      // The API interceptor already turns 409 duplicate-barcode responses (and other
+      // API errors) into an Error carrying the backend's friendly message - surface it
+      // instead of failing silently.
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
       return false
     } finally {
       setIsSubmitting(false)
     }
-  }, [form, editingProduct, loadProducts, products])
+  }, [form, editingProduct, loadProducts, products, showToast])
 
   const handleSave = async () => {
     if (!validate()) return
@@ -733,12 +748,7 @@ export default function ProductsPage() {
         onClose={() => setShowBarcodeScanner(false)}
         onBarcodeDetected={handleScannerDetected}
         onManualInput={handleManualBarcode}
-        conflictCheck={(code) => {
-          const dup = products.find(
-            (p) => p.barcodes?.includes(code) && p._id !== editingProduct?._id
-          )
-          return dup ? { conflictName: dup.name } : null
-        }}
+        conflictCheck={checkBarcodeConflict}
       />
 
       {/* Barcode Input Modal */}

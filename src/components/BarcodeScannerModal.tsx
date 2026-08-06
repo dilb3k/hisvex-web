@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
+import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import { AlertTriangle, Check, Keyboard, RotateCw, Scan, X } from 'lucide-react'
 
 type Props = {
@@ -13,6 +14,31 @@ type Props = {
   closeOnDetect?: boolean
 }
 
+// Only formats realistically used on retail/product barcodes and price-gun labels.
+// Excludes QR, Data Matrix, PDF417, Aztec, etc. so scanning a poster/URL QR code
+// doesn't get silently accepted as a product barcode.
+const PRODUCT_BARCODE_FORMATS = [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+]
+
+const BARCODE_HINTS = new Map<DecodeHintType, unknown>([
+  [DecodeHintType.POSSIBLE_FORMATS, PRODUCT_BARCODE_FORMATS],
+])
+
+// Basic sanity check on the decoded text, independent of the format hint above -
+// rejects anything that looks like a URL or is an unreasonable length for a barcode.
+function isPlausibleBarcode(text: string): boolean {
+  const trimmed = text.trim()
+  if (trimmed.length < 4 || trimmed.length > 48) return false
+  if (/^[a-z]+:\/\//i.test(trimmed) || /^www\./i.test(trimmed) || /\s/.test(trimmed)) return false
+  return true
+}
+
 export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflictCheck, onManualInput, closeOnDetect = true }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
@@ -20,6 +46,8 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
   const [permissionError, setPermissionError] = useState<string | null>(null)
   const [scanned, setScanned] = useState<string | null>(null)
   const [conflict, setConflict] = useState<{ conflictName?: string } | null>(null)
+  const [rejectMessage, setRejectMessage] = useState<string | null>(null)
+  const rejectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const stopCamera = useCallback(() => {
     try {
@@ -42,9 +70,10 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
     setPermissionError(null)
     setScanned(null)
     setConflict(null)
+    setRejectMessage(null)
     pausedRef.current = false
 
-    const reader = new BrowserMultiFormatReader()
+    const reader = new BrowserMultiFormatReader(BARCODE_HINTS)
 
     const start = async () => {
       if (!videoRef.current) return
@@ -63,7 +92,14 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
             if (cancelled || pausedRef.current) return
             const text = result?.getText?.()
             if (!text) return
+            if (!isPlausibleBarcode(text)) {
+              setRejectMessage("Bu kod mahsulot shtrixkodiga o'xshamaydi")
+              if (rejectTimeoutRef.current) clearTimeout(rejectTimeoutRef.current)
+              rejectTimeoutRef.current = setTimeout(() => setRejectMessage(null), 1800)
+              return
+            }
             pausedRef.current = true
+            setRejectMessage(null)
             setScanned(text)
             setConflict(conflictCheck ? conflictCheck(text) : null)
           }
@@ -85,6 +121,10 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
     return () => {
       cancelled = true
       stopCamera()
+      if (rejectTimeoutRef.current) {
+        clearTimeout(rejectTimeoutRef.current)
+        rejectTimeoutRef.current = null
+      }
     }
   }, [open, conflictCheck, stopCamera])
 
@@ -323,14 +363,14 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
                   ))}
                 </div>
                 <div style={{
-                  color: '#fff',
+                  color: rejectMessage ? '#f59e0b' : '#fff',
                   fontSize: 14,
                   fontWeight: 600,
                   marginTop: 20,
                   textAlign: 'center',
                   padding: '0 24px',
                 }}>
-                  Shtrixkodni ramka ichiga joylashtiring
+                  {rejectMessage ?? 'Shtrixkodni ramka ichiga joylashtiring'}
                 </div>
               </div>
             )}
