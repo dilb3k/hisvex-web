@@ -23,6 +23,17 @@ export const formatMoney = (value?: number): string => {
   return value.toLocaleString('uz-UZ') + " so'm"
 }
 
+/**
+ * Clamp a candidate "current quantity" to the only valid range for it: never
+ * negative, never more than the day's start quantity. Mirrors mobile's
+ * `clampCurrentQuantity` (src/utils/inventory.ts) exactly — same formula, same
+ * name — so the invariant can't silently diverge between platforms. Apply this
+ * at the point a value is actually saved/applied, not just as UI validation,
+ * so a bad value can never persist even if the inline check is bypassed.
+ */
+export const clampCurrentQuantity = (quantity: number, startQuantity: number): number =>
+  Math.min(Math.max(quantity, 0), startQuantity)
+
 export const resolveSellPrice = (item: { sellPrice?: number; price?: number }, product?: { sellPrice?: number; sellingPrice?: number }): number =>
   item.sellPrice ?? item.price ?? product?.sellPrice ?? product?.sellingPrice ?? 0
 
