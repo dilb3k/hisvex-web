@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/authStore'
 import { useAppStore } from '@/lib/appStore'
-import { adminsApi } from '@/lib/api'
+import { adminsApi, authApi } from '@/lib/api'
 import { PageHeader } from '@/components/PageHeader'
 import { t, getLanguage, setLanguage } from '@/lib/i18n'
 import type { Language } from '@/lib/i18n'
@@ -127,6 +127,7 @@ export default function SettingsPage() {
   const [pinStep, setPinStep] = useState(0)
   const [pinInputs, setPinInputs] = useState<string[]>(['', '', ''])
   const [pinError, setPinError] = useState<string | null>(null)
+  const [isBlockBusy, setIsBlockBusy] = useState(false)
   const blockInputRef = useRef<HTMLInputElement | null>(null)
 
   const blockSteps = blockCode
@@ -159,7 +160,7 @@ export default function SettingsPage() {
     }
   }, [])
 
-  const handleStepAction = useCallback((step: number, inputs: string[]) => {
+  const handleStepAction = useCallback(async (step: number, inputs: string[]) => {
     const value = inputs[step] ?? ''
     if (value.length !== 4 || !/^\d{4}$/.test(value)) return
     const isLast = step === (blockCode ? 3 : 2) - 1
@@ -175,6 +176,7 @@ export default function SettingsPage() {
       const a = inputs[0] ?? ''
       const b = inputs[1] ?? ''
       const c = inputs[2] ?? ''
+      let newCode: string
       if (blockCode) {
         if (b !== c) {
           setPinError(t('blockCodeMismatch'))
@@ -182,7 +184,7 @@ export default function SettingsPage() {
           focusBlockInput()
           return
         }
-        persistBlockCode(b)
+        newCode = b
       } else {
         if (a !== b) {
           setPinError(t('blockCodeMismatch'))
@@ -190,10 +192,19 @@ export default function SettingsPage() {
           focusBlockInput()
           return
         }
-        persistBlockCode(a)
+        newCode = a
       }
-      setShowBlockModal(false)
-      showToast(t('blockCodeSaved'), 'success')
+      setIsBlockBusy(true)
+      try {
+        await authApi.updateMe({ blockCode: newCode })
+        persistBlockCode(newCode)
+        setShowBlockModal(false)
+        showToast(t('blockCodeSaved'), 'success')
+      } catch (err: unknown) {
+        setPinError(err instanceof Error ? err.message : t('error'))
+      } finally {
+        setIsBlockBusy(false)
+      }
       return
     }
 
@@ -202,7 +213,7 @@ export default function SettingsPage() {
     focusBlockInput()
   }, [blockCode, persistBlockCode, focusBlockInput, showToast, t])
 
-  const handleRemoveBlock = useCallback(() => {
+  const handleRemoveBlock = useCallback(async () => {
     const value = pinInputs[0] ?? ''
     if (value !== blockCode) {
       setPinError(t('blockCodeWrong'))
@@ -210,9 +221,17 @@ export default function SettingsPage() {
       focusBlockInput()
       return
     }
-    persistBlockCode(null)
-    setShowBlockModal(false)
-    showToast(t('blockCodeRemoved'), 'success')
+    setIsBlockBusy(true)
+    try {
+      await authApi.updateMe({ blockCode: null })
+      persistBlockCode(null)
+      setShowBlockModal(false)
+      showToast(t('blockCodeRemoved'), 'success')
+    } catch (err: unknown) {
+      setPinError(err instanceof Error ? err.message : t('error'))
+    } finally {
+      setIsBlockBusy(false)
+    }
   }, [pinInputs, blockCode, persistBlockCode, focusBlockInput, showToast, t])
 
   const userTier = user?.tier ?? 'tekin'
@@ -679,7 +698,7 @@ export default function SettingsPage() {
                       </div>
                       {!isActive && plan.key === 'bor' && (
                         <button
-                          onClick={() => window.open('https://t.me/dilbek7011', '_blank')}
+                          onClick={() => window.open('https://t.me/dilbek7011', '_blank', 'noopener,noreferrer')}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                             padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
@@ -693,7 +712,7 @@ export default function SettingsPage() {
                       )}
                       {!isActive && plan.key === 'pro' && !isSuperAdmin && (
                         <button
-                          onClick={() => window.open('https://t.me/dilbek7011', '_blank')}
+                          onClick={() => window.open('https://t.me/dilbek7011', '_blank', 'noopener,noreferrer')}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                             padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
@@ -989,7 +1008,7 @@ export default function SettingsPage() {
                   setPinInputs((prev) => { const n = [...prev]; n[pinStep] = v; return n })
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && curPin.length === 4) {
+                  if (e.key === 'Enter' && curPin.length === 4 && !isBlockBusy) {
                     const nextInputs = [...pinInputs]
                     nextInputs[pinStep] = curPin
                     handleStepAction(pinStep, nextInputs)
@@ -1032,11 +1051,13 @@ export default function SettingsPage() {
                 {blockCode && pinStep === 0 && (
                   <button
                     onClick={handleRemoveBlock}
+                    disabled={isBlockBusy}
                     style={{
                       flex: 1, padding: '13px 0', borderRadius: 10,
                       border: '1px solid var(--color-danger)', background: 'transparent',
                       color: 'var(--color-danger)', fontSize: 14, fontWeight: 600,
-                      cursor: 'pointer',
+                      cursor: isBlockBusy ? 'not-allowed' : 'pointer',
+                      opacity: isBlockBusy ? 0.6 : 1,
                     }}
                   >
                     {t('blockCodeRemove')}
@@ -1048,13 +1069,13 @@ export default function SettingsPage() {
                     nextInputs[pinStep] = curPin
                     handleStepAction(pinStep, nextInputs)
                   }}
-                  disabled={curPin.length !== 4}
+                  disabled={curPin.length !== 4 || isBlockBusy}
                   style={{
                     flex: 1, padding: '13px 0', borderRadius: 10, border: 'none',
                     background: 'var(--color-primary)', color: '#fff',
                     fontSize: 14, fontWeight: 600,
-                    cursor: curPin.length === 4 ? 'pointer' : 'not-allowed',
-                    opacity: curPin.length === 4 ? 1 : 0.5,
+                    cursor: curPin.length === 4 && !isBlockBusy ? 'pointer' : 'not-allowed',
+                    opacity: curPin.length === 4 && !isBlockBusy ? 1 : 0.5,
                   }}
                 >
                   {isLastStep ? t('save') : t('blockNext')}
