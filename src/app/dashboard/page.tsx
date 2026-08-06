@@ -1,16 +1,21 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { inventoryApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { getBusinessDate } from '@/lib/businessDay'
 import { resolveSellPrice, resolveBuyPrice } from '@/lib/inventory'
 import dayjs from 'dayjs'
-import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Wallet, ShoppingCart, Percent, Package } from 'lucide-react'
+import {
+  Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
+  Wallet, ShoppingCart, Percent, Package, AlertTriangle, BarChart3, Archive, Trophy,
+} from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { formatMoney } from '@/lib/sharedStyles'
 
 type Period = 'daily' | 'monthly' | 'yearly'
+type BucketUnit = 'day' | 'month'
+type MetricKey = 'revenue' | 'profit' | 'qty'
 
 const PERIODS: Period[] = ['daily', 'monthly', 'yearly']
 
@@ -45,7 +50,20 @@ interface ProductRankItem {
   profit: number
 }
 
-function buildProductRankings(inventoryItems: { sold?: number; realizedProfit?: number; startQuantity?: number; openingQuantity?: number; currentQuantity?: number; sellPrice?: number; price?: number; buyPrice?: number; product?: { _id?: string; id?: string; name?: string; sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number } }[]): ProductRankItem[] {
+type InventoryLineItem = {
+  date?: string
+  sold?: number
+  realizedProfit?: number
+  startQuantity?: number
+  openingQuantity?: number
+  currentQuantity?: number
+  sellPrice?: number
+  price?: number
+  buyPrice?: number
+  product?: { _id?: string; id?: string; name?: string; sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number }
+}
+
+function buildProductRankings(inventoryItems: InventoryLineItem[]): ProductRankItem[] {
   const seen = new Map<string, { sold: number; profit: number; name: string }>()
   for (const item of inventoryItems) {
     const p = item.product
@@ -63,6 +81,211 @@ function buildProductRankings(inventoryItems: { sold?: number; realizedProfit?: 
   }
   return Array.from(seen.entries()).map(([id, totals]) => ({ id, name: totals.name, sold: totals.sold, profit: totals.profit }))
 }
+
+function computeTotals(items: InventoryLineItem[]) {
+  let sold = 0, revenue = 0, profit = 0, remaining = 0
+  for (const item of items) {
+    const qty = item.currentQuantity ?? 0
+    const sp = resolveSellPrice(item, item.product)
+    const bp = resolveBuyPrice(item, item.product)
+    const soldQty = item.sold ?? Math.max((item.startQuantity ?? item.openingQuantity ?? 0) - qty, 0)
+    sold += soldQty
+    revenue += soldQty * sp
+    profit += item.realizedProfit ?? (soldQty * (sp - bp))
+    remaining += Math.max(qty, 0)
+  }
+  const stockSellValue = items.reduce((s, item) => {
+    const qty = item.currentQuantity ?? 0
+    const sp = resolveSellPrice(item, item.product)
+    return s + Math.max(qty, 0) * sp
+  }, 0)
+  const stockProfit = items.reduce((s, item) => {
+    const qty = item.currentQuantity ?? 0
+    const sp = resolveSellPrice(item, item.product)
+    const bp = resolveBuyPrice(item, item.product)
+    return s + Math.max(qty, 0) * (sp - bp)
+  }, 0)
+  return {
+    sellableItems: sold + remaining, soldItems: sold, sellableValue: revenue + stockSellValue,
+    earnedRevenue: revenue, possibleProfit: profit + stockProfit, earnedProfit: profit,
+    remainingItems: remaining, stockValue: stockSellValue,
+  }
+}
+
+// ============================================================
+// Trend chart — Section A's "Bu davr" bar chart, reused (per spec) inside the
+// All-Time modal too. Plain divs only, no chart library.
+// ============================================================
+
+function bucketKeyFor(date: string, unit: BucketUnit) {
+  const d = dayjs(date)
+  return unit === 'day' ? d.format('YYYY-MM-DD') : d.format('YYYY-MM')
+}
+
+function bucketLabelFor(key: string, unit: BucketUnit) {
+  return unit === 'day' ? dayjs(key).format('DD MMM') : dayjs(key + '-01').format('MMM YYYY')
+}
+
+function aggregateBuckets(items: InventoryLineItem[], unit: BucketUnit) {
+  const map = new Map<string, { revenue: number; profit: number; qty: number }>()
+  for (const item of items) {
+    if (!item?.date) continue
+    const key = bucketKeyFor(item.date, unit)
+    const sp = resolveSellPrice(item, item.product)
+    const bp = resolveBuyPrice(item, item.product)
+    const opening = item.startQuantity ?? item.openingQuantity ?? 0
+    const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+    const cur = map.get(key) ?? { revenue: 0, profit: 0, qty: 0 }
+    cur.revenue += soldQty * sp
+    cur.profit += item.realizedProfit ?? soldQty * (sp - bp)
+    cur.qty += soldQty
+    map.set(key, cur)
+  }
+  return map
+}
+
+function bucketKeysInRange(from: string, to: string, unit: BucketUnit) {
+  const keys: string[] = []
+  const unitName = unit === 'day' ? 'day' : 'month'
+  let cur = dayjs(from).startOf(unitName)
+  const end = dayjs(to).startOf(unitName)
+  let guard = 0
+  while ((cur.isBefore(end) || cur.isSame(end, unitName)) && guard < 400) {
+    keys.push(unit === 'day' ? cur.format('YYYY-MM-DD') : cur.format('YYYY-MM'))
+    cur = cur.add(1, unitName)
+    guard++
+  }
+  return keys
+}
+
+function metricOptions() {
+  return [
+    { key: 'revenue' as const, label: t('revenue'), color: 'var(--color-metric-revenue)' },
+    { key: 'profit' as const, label: t('netProfit'), color: 'var(--color-metric-profit)' },
+    { key: 'qty' as const, label: t('soldPieces'), color: 'var(--color-metric-qty)' },
+  ]
+}
+
+function ChartSkeleton({ height }: { height: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height }}>
+      {Array.from({ length: 14 }).map((_, i) => (
+        <div key={i} style={{
+          flex: 1, borderRadius: '4px 4px 0 0', background: 'var(--color-border)',
+          height: `${28 + ((i * 37) % 62)}%`, animation: 'pulse 1.4s ease-in-out infinite', animationDelay: `${i * 0.05}s`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+function TrendChart({ items, bucketUnit, rangeFrom, rangeTo, currentKey, loading, compact }: {
+  items: InventoryLineItem[]
+  bucketUnit: BucketUnit
+  rangeFrom: string
+  rangeTo: string
+  currentKey?: string
+  loading?: boolean
+  compact?: boolean
+}) {
+  const [metric, setMetric] = useState<MetricKey>('revenue')
+  const [activeIdx, setActiveIdx] = useState<number | null>(null)
+  const options = metricOptions()
+  const active = options.find((o) => o.key === metric)!
+  const plotHeight = compact ? 84 : 130
+
+  const buckets = useMemo(() => {
+    const map = aggregateBuckets(items, bucketUnit)
+    const keys = bucketKeysInRange(rangeFrom, rangeTo, bucketUnit)
+    return keys.map((key) => ({ key, ...(map.get(key) ?? { revenue: 0, profit: 0, qty: 0 }) }))
+  }, [items, bucketUnit, rangeFrom, rangeTo])
+
+  const isEmpty = !loading && (items.length === 0 || buckets.length === 0)
+  const maxVal = Math.max(...buckets.map((b) => b[metric]), 1)
+
+  return (
+    <div style={{ marginBottom: compact ? 0 : 14 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+        {options.map((opt) => (
+          <button key={opt.key} onClick={() => { setMetric(opt.key); setActiveIdx(null) }} style={{
+            padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            border: `1.5px solid ${metric === opt.key ? opt.color : 'var(--color-border)'}`,
+            background: metric === opt.key ? opt.color : 'transparent',
+            color: metric === opt.key ? '#fff' : 'var(--color-text-secondary)',
+            transition: 'all 0.15s',
+          }}>{opt.label}</button>
+        ))}
+      </div>
+
+      <div style={{
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 14,
+        padding: compact ? '14px 12px 10px' : '18px 16px 12px',
+      }}>
+        {loading ? (
+          <ChartSkeleton height={plotHeight} />
+        ) : isEmpty ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: plotHeight, textAlign: 'center' }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-primary-soft)', color: 'var(--color-primary)' }}>
+              <BarChart3 size={17} />
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('chartNoData')}</span>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: plotHeight }}>
+              {buckets.map((b, i) => {
+                const val = b[metric]
+                const isCurrent = currentKey ? b.key === currentKey : i === buckets.length - 1
+                const heightPct = Math.max((val / maxVal) * 100, val > 0 ? 4 : 2)
+                const isActive = activeIdx === i
+                const edgeStart = i < buckets.length * 0.15
+                const edgeEnd = i > buckets.length * 0.85
+                return (
+                  <div
+                    key={b.key}
+                    style={{ position: 'relative', flex: 1, minWidth: 2, height: '100%', display: 'flex', alignItems: 'flex-end', cursor: 'pointer' }}
+                    onMouseEnter={() => setActiveIdx(i)}
+                    onMouseLeave={() => setActiveIdx((cur) => (cur === i ? null : cur))}
+                    onClick={() => setActiveIdx((cur) => (cur === i ? null : i))}
+                  >
+                    {isActive && (
+                      <div style={{
+                        position: 'absolute', bottom: 'calc(100% + 6px)',
+                        left: edgeStart ? 0 : edgeEnd ? 'auto' : '50%',
+                        right: edgeEnd ? 0 : 'auto',
+                        transform: edgeStart || edgeEnd ? 'none' : 'translateX(-50%)',
+                        background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)', borderRadius: 8,
+                        padding: '6px 10px', boxShadow: 'var(--shadow-md)', zIndex: 5, pointerEvents: 'none', whiteSpace: 'nowrap',
+                      }}>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{bucketLabelFor(b.key, bucketUnit)}</div>
+                        <div style={{ fontSize: 'clamp(11px, 3vw, 13px)', fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                          {metric === 'qty' ? `${val} dona` : formatMoney(val)}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{
+                      width: '100%', height: `${heightPct}%`, borderRadius: '4px 4px 0 0',
+                      background: active.color, opacity: isCurrent ? 1 : 0.35,
+                      transition: 'height 0.3s ease, opacity 0.2s',
+                    }} />
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+              <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{bucketLabelFor(buckets[0].key, bucketUnit)}</span>
+              {buckets.length > 1 && <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{bucketLabelFor(buckets[buckets.length - 1].key, bucketUnit)}</span>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Small shared pieces
+// ============================================================
 
 const CARD: React.CSSProperties = {
   padding: 24,
@@ -118,46 +341,98 @@ const navBtn: React.CSSProperties = {
   transition: 'background 0.2s',
 }
 
-function computeTotals(items: { sellPrice?: number; buyPrice?: number; price?: number; currentQuantity?: number; startQuantity?: number; openingQuantity?: number; sold?: number; realizedProfit?: number; product?: { sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number } }[]) {
-  let sold = 0, revenue = 0, profit = 0, remaining = 0
-  for (const item of items) {
-    const qty = item.currentQuantity ?? 0
-    const sp = resolveSellPrice(item, item.product)
-    const bp = resolveBuyPrice(item, item.product)
-    const soldQty = item.sold ?? Math.max((item.startQuantity ?? item.openingQuantity ?? 0) - qty, 0)
-    sold += soldQty
-    revenue += soldQty * sp
-    profit += item.realizedProfit ?? (soldQty * (sp - bp))
-    remaining += Math.max(qty, 0)
-  }
-  const stockSellValue = items.reduce((s, item) => {
-    const qty = item.currentQuantity ?? 0
-    const sp = resolveSellPrice(item, item.product)
-    return s + Math.max(qty, 0) * sp
-  }, 0)
-  const stockProfit = items.reduce((s, item) => {
-    const qty = item.currentQuantity ?? 0
-    const sp = resolveSellPrice(item, item.product)
-    const bp = resolveBuyPrice(item, item.product)
-    return s + Math.max(qty, 0) * (sp - bp)
-  }, 0)
-  return {
-    sellableItems: sold + remaining, soldItems: sold, sellableValue: revenue + stockSellValue,
-    earnedRevenue: revenue, possibleProfit: profit + stockProfit, earnedProfit: profit,
-    remainingItems: remaining, stockValue: stockSellValue,
-  }
+const SECTION_LABEL: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 700,
+  color: 'var(--color-text-secondary)',
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
 }
+
+function ErrorBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 12,
+      border: '1px solid var(--color-danger)', background: 'var(--color-danger-soft)', marginBottom: 14,
+    }}>
+      <AlertTriangle size={20} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--color-danger)' }}>{t('dataLoadError')}</span>
+      <button onClick={onRetry} style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9,
+        border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+      }}><RefreshCw size={14} />{t('retryAction')}</button>
+    </div>
+  )
+}
+
+function StatsSkeleton() {
+  const block = (h: number, style?: React.CSSProperties): React.CSSProperties => ({
+    height: h, borderRadius: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+    animation: 'pulse 1.4s ease-in-out infinite', ...style,
+  })
+  return (
+    <div>
+      <div style={block(126, { marginBottom: 14 })} />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ flex: 1, height: 30, borderRadius: 999, background: 'var(--color-surface)', border: '1px solid var(--color-border)', animation: 'pulse 1.4s ease-in-out infinite', animationDelay: `${i * 0.1}s` }} />
+        ))}
+      </div>
+      <div style={block(160, { marginBottom: 14 })} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
+        {[0, 1, 2].map((i) => <div key={i} style={block(68, { animationDelay: `${i * 0.1}s` })} />)}
+      </div>
+      <div style={block(110, { marginBottom: 14 })} />
+      <div style={block(220)} />
+    </div>
+  )
+}
+
+// Native-input-backed date button styled to match the label-over-value control this app
+// uses for range pickers elsewhere. react-datepicker (which desktop's equivalent modal
+// uses) is not a dependency of this app yet — see final report; kept to the native
+// <input type="date"> to avoid adding a new npm dependency without flagging it, but wraps
+// it in the same visual affordance desktop's `RangeButton` provides.
+function RangeDateButton({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{
+      position: 'relative', flex: 1, padding: 12, borderRadius: 10, border: '1px solid var(--color-border)',
+      background: 'var(--color-bg)', overflow: 'hidden', cursor: 'pointer',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+        {dayjs(value).format('DD.MM.YYYY')}
+      </div>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        aria-label={label}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none' }}
+      />
+    </div>
+  )
+}
+
+// ============================================================
+// Page
+// ============================================================
 
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<Period>('daily')
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
-  const [inventoryItems, setInventoryItems] = useState<any[]>([])
+  const [inventoryItems, setInventoryItems] = useState<InventoryLineItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [showAllTime, setShowAllTime] = useState(false)
   const [allTimeFrom, setAllTimeFrom] = useState(() => dayjs(getBusinessDate()).subtract(1, 'year').format('YYYY-MM-DD'))
   const [allTimeTo, setAllTimeTo] = useState(getBusinessDate)
-  const [allTimeItems, setAllTimeItems] = useState<any[] | null>(null)
+  const [allTimeItems, setAllTimeItems] = useState<InventoryLineItem[] | null>(null)
   const [allTimeLoading, setAllTimeLoading] = useState(false)
+  const [allTimeError, setAllTimeError] = useState(false)
   const refreshKey = useAppStore((s) => s.refreshKey)
 
   const range = useMemo(() => getPeriodRange(period, selectedDate), [period, selectedDate])
@@ -165,14 +440,48 @@ export default function StatisticsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       const invRes = await inventoryApi.getByDate(range.from, range.to)
       setInventoryItems(invRes.data?.items ?? [])
-    } catch { setInventoryItems([]) }
-    finally { setLoading(false) }
+    } catch {
+      setInventoryItems([])
+      setLoadError(true)
+    } finally { setLoading(false) }
   }, [range.from, range.to, refreshKey])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // The chart needs finer-grained history than a single "daily" period's range provides
+  // (that range is just one day) — widen it to a rolling 14-day window client-side only
+  // for the chart, without touching the main fetch/cache path used by the rest of the page.
+  const chartRange = useMemo(() => {
+    if (period === 'daily') {
+      const to = selectedDate
+      const from = dayjs(selectedDate).subtract(13, 'day').format('YYYY-MM-DD')
+      return { from, to, unit: 'day' as BucketUnit }
+    }
+    if (period === 'monthly') return { from: range.from, to: range.to, unit: 'day' as BucketUnit }
+    return { from: range.from, to: range.to, unit: 'month' as BucketUnit }
+  }, [period, selectedDate, range.from, range.to])
+
+  const [dailyChartItems, setDailyChartItems] = useState<InventoryLineItem[]>([])
+  const [dailyChartLoading, setDailyChartLoading] = useState(true)
+
+  useEffect(() => {
+    if (period !== 'daily') return
+    let cancelled = false
+    setDailyChartLoading(true)
+    inventoryApi.getByDate(chartRange.from, chartRange.to)
+      .then((res) => { if (!cancelled) setDailyChartItems(res.data?.items ?? []) })
+      .catch(() => { if (!cancelled) setDailyChartItems([]) })
+      .finally(() => { if (!cancelled) setDailyChartLoading(false) })
+    return () => { cancelled = true }
+  }, [period, chartRange.from, chartRange.to, refreshKey])
+
+  const chartItems = period === 'daily' ? dailyChartItems : inventoryItems
+  const chartIsLoading = period === 'daily' ? dailyChartLoading : loading
+  const currentBucketKey = chartRange.unit === 'month' ? dayjs(selectedDate).format('YYYY-MM') : dayjs(selectedDate).format('YYYY-MM-DD')
 
   const totals = useMemo(() => {
     const revenue = inventoryItems.reduce((s, item) => {
@@ -206,14 +515,18 @@ export default function StatisticsPage() {
   const leastProducts = useMemo(() => [...allProductStats].sort((a, b) => a.sold - b.sold || a.profit - b.profit), [allProductStats])
   const maxLeastSold = useMemo(() => Math.max(...leastProducts.map((p) => p.sold), 1), [leastProducts])
   const allTimeTotals = useMemo(() => { if (!allTimeItems) return null; return computeTotals(allTimeItems) }, [allTimeItems])
+  const allTimeBucketUnit: BucketUnit = useMemo(() => dayjs(allTimeTo).diff(dayjs(allTimeFrom), 'day') > 60 ? 'month' : 'day', [allTimeFrom, allTimeTo])
 
   const fetchAllTime = useCallback(async (from: string, to: string) => {
     setAllTimeLoading(true)
+    setAllTimeError(false)
     try {
       const invRes = await inventoryApi.getByDate(from, to)
       setAllTimeItems(invRes.data?.items ?? [])
-    } catch { setAllTimeItems(null) }
-    finally { setAllTimeLoading(false) }
+    } catch {
+      setAllTimeItems(null)
+      setAllTimeError(true)
+    } finally { setAllTimeLoading(false) }
   }, [])
 
   const handleDownload = () => {
@@ -226,7 +539,7 @@ export default function StatisticsPage() {
       const sell = resolveSellPrice(item, p)
       const opening = item.startQuantity ?? item.openingQuantity ?? 0
       const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-      const revenue = item.revenue ?? sold * sell
+      const revenue = (item as { revenue?: number }).revenue ?? sold * sell
       const profit = item.realizedProfit ?? sold * (sell - buy)
       rows.push([name, String(buy), String(sell), String(sold), String(revenue), String(profit)])
     }
@@ -276,8 +589,8 @@ export default function StatisticsPage() {
           </div>
           <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', marginTop: 6, overflow: 'hidden' }}>
             <div style={{
-              width: `${ratio * 100}%`, height: '100%', borderRadius: 2,
-              background: isBlacklist ? 'var(--color-danger)' : 'var(--color-primary)',
+              width: `${ratio * 100}%`, height: '100%', borderRadius: 2, minHeight: ratio > 0 ? 2 : 0,
+              background: isBlacklist ? 'var(--color-danger)' : 'var(--color-metric-qty)',
               transition: 'width 0.4s ease',
             }} />
           </div>
@@ -308,6 +621,9 @@ export default function StatisticsPage() {
           }}><CalendarClock size={16} />{t('allTimeStatistics')}</button>
         </div>
       </div>
+
+      {/* Section A — "Bu davr" (this period, realized/actual only) */}
+      <div style={{ ...SECTION_LABEL, marginBottom: 8 }}><Wallet size={13} /> {t('statsThisPeriod')}</div>
 
       {/* Period tabs + refresh */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -351,10 +667,9 @@ export default function StatisticsPage() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 12 }}>
-          <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('loading_data')}</span>
-        </div>
+        <StatsSkeleton />
+      ) : loadError ? (
+        <ErrorBanner onRetry={fetchData} />
       ) : (
         <>
           {/* Hero */}
@@ -376,55 +691,77 @@ export default function StatisticsPage() {
             </div>
           </div>
 
-          {/* KPI cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
+          {/* Trend chart — single metric at a time, segmented control, current bucket emphasized */}
+          <TrendChart
+            items={chartItems}
+            bucketUnit={chartRange.unit}
+            rangeFrom={chartRange.from}
+            rangeTo={chartRange.to}
+            currentKey={currentBucketKey}
+            loading={chartIsLoading}
+          />
+
+          {/* KPI cards — realized numbers only, solid-filled cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
-              { icon: <TrendingUp size={18} />, label: t('netProfit'), value: formatMoney(totals.profit), color: 'var(--color-primary)' },
-              { icon: <ShoppingCart size={18} />, label: t('soldPieces'), value: String(totals.sold), color: 'var(--color-success)' },
-              { icon: <Percent size={18} />, label: t('marginPercent'), value: `${margin}%`, color: '#8b5cf6' },
+              { icon: <TrendingUp size={18} />, label: t('netProfit'), value: formatMoney(totals.profit), color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)' },
+              { icon: <ShoppingCart size={18} />, label: t('soldPieces'), value: String(totals.sold), color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)' },
+              { icon: <Percent size={18} />, label: t('marginPercent'), value: `${margin}%`, color: 'var(--color-violet)', soft: 'rgba(139,92,246,0.14)' },
             ].map((item, i) => (
               <div key={i} style={kpiCard}>
-                <div style={{ ...kpiIcon, background: `${item.color}1a`, color: item.color }}>{item.icon}</div>
-                <div>
+                <div style={{ ...kpiIcon, background: item.soft, color: item.color }}>{item.icon}</div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{item.label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3 }}>{item.value}</div>
+                  <div style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3 }}>{item.value}</div>
                 </div>
               </div>
             ))}
           </div>
 
+          {/* Section B — "Ombordagi holat" (inventory-at-rest / projected). Outline cards, not filled. */}
           {overallTotals && (
-            <div style={CARD}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <Package size={17} color="var(--color-primary)" />
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{periodLabel} - {t('totalRevenueLabel')}</h3>
+            <>
+              <div style={{ marginBottom: 8 }}>
+                <div style={SECTION_LABEL}><Archive size={13} /> {t('statsInventoryStatus')}</div>
+                <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '3px 0 0' }}>{t('statsInventorySubtitle')}</p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
                 {[
-                  { label: t('totalSellablePieces'), value: overallTotals.sellableItems },
-                  { label: t('soldPieces'), value: overallTotals.soldItems },
-                  { label: t('totalSellValue'), value: formatMoney(overallTotals.sellableValue) },
-                  { label: t('soldValue'), value: formatMoney(overallTotals.earnedRevenue) },
-                  { label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), highlight: true },
-                  { label: t('earnedProfit'), value: formatMoney(overallTotals.earnedProfit), highlight: true },
-                  { label: t('remainingPieces'), value: overallTotals.remainingItems },
-                  { label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
+                  { icon: <Package size={15} />, label: t('remainingPieces'), value: String(overallTotals.remainingItems) },
+                  { icon: <Wallet size={15} />, label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
+                  { icon: <TrendingUp size={15} />, label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), tag: t('estimatedTag') },
                 ].map((item, i) => (
-                  <div key={i} style={{ padding: 12, borderRadius: 10, background: 'rgba(127,127,127,0.06)', border: '1px solid var(--color-border)' }}>
-                    <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0, marginBottom: 3 }}>{item.label}</p>
-                    <p style={{ fontSize: 16, fontWeight: 700, margin: 0, fontVariantNumeric: 'tabular-nums', ...(item.highlight ? { color: 'var(--color-primary)' } : { color: 'var(--color-text)' }) } as any}>{item.value}</p>
+                  <div key={i} style={{
+                    padding: 14, borderRadius: 12, border: '1px solid var(--color-border)', background: 'transparent',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: 'var(--color-text-tertiary)' }}>
+                      {item.icon}
+                      <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0 }}>{item.label}</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                      <p style={{ fontSize: 'clamp(14px, 4vw, 17px)', fontWeight: 700, margin: 0, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{item.value}</p>
+                      {item.tag && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)', borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap' }}>{item.tag}</span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </>
           )}
+
+          {/* Section C — Rankings */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={SECTION_LABEL}><Trophy size={13} /> {t('statsRankings')}</div>
+          </div>
 
           <div style={CARD}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <TrendingUp size={18} color="var(--color-success)" />
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{t('topProductsLabel')}</h3>
             </div>
-            {topProducts.length > 0 ? topProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, false, topProducts[0]?.sold)) : <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '12px 0', margin: 0 }}>{t('noProductsPeriod')}</p>}          </div>
+            {topProducts.length > 0 ? topProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, false, topProducts[0]?.sold)) : <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '12px 0', margin: 0 }}>{t('noProductsPeriod')}</p>}
+          </div>
 
           {leastProducts.length > 0 && (
             <div style={{ ...CARD, borderColor: 'rgba(239,68,68,0.33)', background: 'rgba(239,68,68,0.03)' }}>
@@ -455,18 +792,8 @@ export default function StatisticsPage() {
               }}><X size={18} /></button>
             </div>
             <div style={{ display: 'flex', gap: 10, padding: 20, flexWrap: 'wrap' }}>
-              <div onClick={() => {}} style={{ flex: 1, padding: 12, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer' }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{t('rangeFrom')}</div>
-                <input type="date" value={allTimeFrom} onChange={(e) => setAllTimeFrom(e.target.value)} style={{
-                  fontSize: 14, fontWeight: 700, color: 'var(--color-text)', border: 'none', background: 'transparent', outline: 'none', width: '100%',
-                }} />
-              </div>
-              <div onClick={() => {}} style={{ flex: 1, padding: 12, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer' }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{t('rangeTo')}</div>
-                <input type="date" value={allTimeTo} onChange={(e) => setAllTimeTo(e.target.value)} style={{
-                  fontSize: 14, fontWeight: 700, color: 'var(--color-text)', border: 'none', background: 'transparent', outline: 'none', width: '100%',
-                }} />
-              </div>
+              <RangeDateButton label={t('rangeFrom')} value={allTimeFrom} onChange={setAllTimeFrom} />
+              <RangeDateButton label={t('rangeTo')} value={allTimeTo} onChange={setAllTimeTo} />
             </div>
             <button onClick={() => fetchAllTime(allTimeFrom, allTimeTo)} disabled={allTimeLoading} style={{
               display: 'block', margin: '0 20px 12px', padding: '12px 0', borderRadius: 8, border: 'none',
@@ -476,9 +803,21 @@ export default function StatisticsPage() {
               <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
                 <div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
               </div>
+            ) : allTimeError ? (
+              <div style={{ padding: '0 20px 20px' }}>
+                <ErrorBanner onRetry={() => fetchAllTime(allTimeFrom, allTimeTo)} />
+              </div>
             ) : allTimeTotals ? (
               <div style={{ padding: '0 20px 20px' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                <TrendChart
+                  items={allTimeItems ?? []}
+                  bucketUnit={allTimeBucketUnit}
+                  rangeFrom={allTimeFrom}
+                  rangeTo={allTimeTo}
+                  loading={false}
+                  compact
+                />
+                <div style={{ display: 'flex', flexWrap: 'wrap', marginTop: 14 }}>
                   {[
                     { label: t('totalSellablePieces'), value: allTimeTotals.sellableItems },
                     { label: t('soldPieces'), value: allTimeTotals.soldItems },
@@ -491,7 +830,7 @@ export default function StatisticsPage() {
                   ].map((item, i) => (
                     <div key={i} style={{ width: '50%', marginBottom: 12 }}>
                       <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0, marginBottom: 1 }}>{item.label}</p>
-                      <p style={{ fontSize: 15, fontWeight: 700, margin: 0, ...(item.highlight ? { color: 'var(--color-primary)' } : {}) } as any}>{item.value}</p>
+                      <p style={{ fontSize: 15, fontWeight: 700, margin: 0, fontVariantNumeric: 'tabular-nums', ...(item.highlight ? { color: 'var(--color-primary)' } : {}) } as React.CSSProperties}>{item.value}</p>
                     </div>
                   ))}
                 </div>
