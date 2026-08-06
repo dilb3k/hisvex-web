@@ -11,7 +11,7 @@ import {
   Wallet, ShoppingCart, Percent, Package, BarChart3, Archive, Trophy,
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
-import { formatMoney } from '@/lib/sharedStyles'
+import { formatMoney, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { SECTION_LABEL, ErrorBanner } from '@/components/StatusViews'
 
 type Period = 'daily' | 'monthly' | 'yearly'
@@ -296,27 +296,6 @@ const CARD: React.CSSProperties = {
   marginBottom: 16,
   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
   transition: 'all 0.2s',
-}
-
-const kpiCard: React.CSSProperties = {
-  background: 'var(--color-surface)',
-  borderRadius: 14,
-  padding: 16,
-  border: '1px solid var(--color-border)',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 14,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-}
-
-const kpiIcon: React.CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 12,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
 }
 
 const heroChip: React.CSSProperties = {

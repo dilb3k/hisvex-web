@@ -119,6 +119,30 @@ export const btnDanger: CSSProperties = {
   boxShadow: '0 2px 8px rgba(239,68,68,0.25)',
 }
 
+// Statistics screen's KPI-card pattern (icon chip + label + tabular-nums value),
+// promoted here so other screens (e.g. Inventory) can reuse the same visual
+// language instead of reinventing a summary-row treatment.
+export const kpiCard: CSSProperties = {
+  background: 'var(--color-surface)',
+  borderRadius: 14,
+  padding: 16,
+  border: '1px solid var(--color-border)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 14,
+  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+}
+
+export const kpiIcon: CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+}
+
 export const formatMoney = (val?: number) => {
   if (val == null || Number.isNaN(val) || !Number.isFinite(val)) return "0 so'm"
   return val.toLocaleString('uz-UZ') + " so'm"
