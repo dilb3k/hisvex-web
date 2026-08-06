@@ -48,6 +48,16 @@ export const displayPhone = (phone: string) => {
 
 export const formatShortDate = (dateStr?: string) => {
   if (!dateStr) return ''
+  // Bare date-only strings ("YYYY-MM-DD") have no timezone info, so `new Date()` parses
+  // them as UTC midnight - reading that back with local getters shifts the date by a day
+  // in negative-UTC-offset timezones. Parse the Y/M/D components directly instead.
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr)
+  if (dateOnlyMatch && !dateStr.includes('T')) {
+    const [, yyyy, mm, dd] = dateOnlyMatch
+    return `${dd}.${mm}.${yyyy}`
+  }
+  // Full ISO timestamps represent a real moment in time - converting to local time via
+  // the normal Date getters is the correct behavior here.
   const d = new Date(dateStr)
   const dd = d.getDate().toString().padStart(2, '0')
   const mm = (d.getMonth() + 1).toString().padStart(2, '0')

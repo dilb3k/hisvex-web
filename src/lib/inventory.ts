@@ -97,7 +97,7 @@ export const getInventoryTotals = (items: (InventoryItem & { product?: Product }
   let totalStockSellValue = 0, totalStockBuyValue = 0, totalStockProfit = 0
   for (const item of items) {
     const metrics = getInventoryMetrics(item)
-    totalStart += item.openingQuantity ?? 0
+    totalStart += item.startQuantity ?? item.openingQuantity ?? 0
     totalCurrent += metrics.remaining
     totalSold += metrics.sold
     totalRevenue += metrics.revenue

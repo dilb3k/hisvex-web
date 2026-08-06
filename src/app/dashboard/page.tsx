@@ -233,7 +233,7 @@ export default function StatisticsPage() {
     const totals = computeTotals(inventoryItems)
     rows.push(['Jami', '', '', String(totals.soldItems), String(totals.earnedRevenue), String(totals.earnedProfit)])
 
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
