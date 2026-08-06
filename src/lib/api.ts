@@ -182,8 +182,8 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
-  login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password }),
-  loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number }),
+  login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
+  loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
   register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number) => api.post<AuthSuccess>('/auth/register', {
     username,
     password,
