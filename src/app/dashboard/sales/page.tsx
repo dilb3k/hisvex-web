@@ -31,8 +31,10 @@ export default function SalesPage() {
       const today = getBusinessDate()
       const { data } = await inventoryApi.getByDate(today, today)
       setInventoryItems(data?.items ?? [])
-    } catch {
-      // handled by loadInventory caller
+    } catch (err) {
+      console.error('Load inventory error:', err)
+      setError(t('error') || 'Xatolik yuz berdi')
+      setTimeout(() => setError(null), 3000)
     }
   }, [])
 
@@ -160,7 +162,8 @@ export default function SalesPage() {
       setSuccess(t('salesSuccess'))
       setError(null)
       setTimeout(() => setSuccess(null), 3000)
-    } catch {
+    } catch (err) {
+      console.error('Record sale error:', err)
       setSuccess(null)
       setError(t('error') || 'Xatolik yuz berdi')
       setTimeout(() => setError(null), 3000)

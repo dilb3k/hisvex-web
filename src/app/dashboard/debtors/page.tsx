@@ -37,6 +37,8 @@ export default function DebtorsPage() {
   const [adjustAmount, setAdjustAmount] = useState('')
   const [adjustError, setAdjustError] = useState('')
 
+  const [deleteError, setDeleteError] = useState('')
+
   useEffect(() => {
     if (showAddModal) {
       setAddName('')
@@ -64,13 +66,20 @@ export default function DebtorsPage() {
     }
   }, [showDetailModal])
 
+  useEffect(() => {
+    if (showDeleteConfirm) {
+      setDeleteError('')
+    }
+  }, [showDeleteConfirm])
+
   const loadDebtors = useCallback(async () => {
     setLoading(true)
     setOffline(false)
     try {
       const { data } = await debtorsApi.getAll()
       setDebtors(data)
-    } catch {
+    } catch (err) {
+      console.error('Load debtors error:', err)
       setOffline(true)
     } finally {
       setLoading(false)
@@ -120,7 +129,10 @@ export default function DebtorsPage() {
       setSelectedDebtor(null)
       clearApiCache()
       loadDebtors()
-    } catch (err) { console.error('Debtor delete error:', err) }
+    } catch (err) {
+      console.error('Debtor delete error:', err)
+      setDeleteError(t('error') || 'Xatolik yuz berdi')
+    }
   }
 
   const handleAdjust = async (type: 'add' | 'subtract') => {
@@ -771,6 +783,11 @@ export default function DebtorsPage() {
             <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0, marginBottom: 20 }}>
               {t('deleteDebtorConfirm', { name: selectedDebtor?.name || '' })}
             </p>
+            {deleteError && (
+              <div style={{ fontSize: 12, color: 'var(--color-danger)', marginBottom: 12, textAlign: 'center' }}>
+                {deleteError}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button
                 onClick={() => { setShowDeleteConfirm(false); setSelectedDebtor(null) }}

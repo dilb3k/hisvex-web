@@ -38,7 +38,16 @@ export function setTokensRefreshedHandler(handler: ((token: string, refreshToken
 }
 
 const cache = new Map<string, { data: any; ts: number }>()
-export function clearApiCache() { cache.clear() }
+// Bumped synchronously on every mutating (non-GET) response, and stamped onto each
+// GET request when it is dispatched. A GET response is only allowed to populate the
+// cache if no mutation has happened since that GET was sent — this closes the race
+// where an in-flight GET resolves after a mutation already cleared the cache and would
+// otherwise silently repopulate it with pre-mutation data.
+let cacheGeneration = 0
+export function clearApiCache() {
+  cache.clear()
+  cacheGeneration++
+}
 const CACHE_TTL = 30000
 
 function cacheKey(config: { method?: string; url?: string; params?: any }) {
@@ -75,6 +84,9 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.headers.Authorization = `Bearer ${apiToken}`
   }
   if (config.method === 'get') {
+    // Stamp the generation active at dispatch time so the response handler can tell
+    // whether a mutation raced ahead of this GET before its response landed.
+    ;(config as InternalAxiosRequestConfig & { _cacheGen?: number })._cacheGen = cacheGeneration
     const key = cacheKey(config)
     const hit = cache.get(key)
     if (hit && Date.now() - hit.ts < CACHE_TTL) {
@@ -92,6 +104,7 @@ function handleSessionExpired(
   apiToken = null
   apiRefreshToken = null
   cache.clear()
+  cacheGeneration++
   try { localStorage.removeItem('hisvex_token') } catch {}
   try { localStorage.removeItem('hisvex_refresh') } catch {}
   try { localStorage.removeItem('hisvex_user') } catch {}
@@ -115,9 +128,18 @@ api.interceptors.response.use(
       response.data = body.data
     }
     if (response.config.method === 'get') {
-      cache.set(cacheKey(response.config), { data: response.data, ts: Date.now() })
+      // Only cache this response if no mutation completed since the request was sent —
+      // otherwise it's a stale in-flight read racing a mutation's cache-clear, and
+      // writing it in would silently resurrect pre-mutation data.
+      const reqGen = (response.config as InternalAxiosRequestConfig & { _cacheGen?: number })._cacheGen
+      if (reqGen === cacheGeneration) {
+        cache.set(cacheKey(response.config), { data: response.data, ts: Date.now() })
+      }
     } else {
+      // Invalidate synchronously, before this mutating call's promise resolves to its
+      // caller, so an immediately-following GET can never observe stale cached data.
       cache.clear()
+      cacheGeneration++
     }
     return response
   },
