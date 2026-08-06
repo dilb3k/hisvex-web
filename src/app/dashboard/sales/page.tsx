@@ -8,6 +8,7 @@ import { resolveSellPrice, formatMoney } from '@/lib/inventory'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
+import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import type { InventoryItem, Product } from '@/lib/types'
 
 export default function SalesPage() {
@@ -18,6 +19,7 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
   const [barcodeError, setBarcodeError] = useState('')
   const [success, setSuccess] = useState<string | null>(null)
@@ -109,38 +111,37 @@ export default function SalesPage() {
     setCart({})
   }, [])
 
-  const handleBarcodeSubmit = useCallback(() => {
-    const code = barcodeInput.trim()
-    if (!code) return
+  const addBarcodeProduct = useCallback((code: string): string | null => {
+    const trimmed = code.trim()
+    if (!trimmed) return null
 
-    const product = products.find(p => p.barcodes?.includes(code))
-    if (!product) {
-      setBarcodeError(t('barcodeNotFound') || 'Barcode bo\'yicha mahsulot topilmadi')
-      return
-    }
+    const product = products.find(p => p.barcodes?.includes(trimmed))
+    if (!product) return t('barcodeNotFound') || 'Barcode bo\'yicha mahsulot topilmadi'
 
     const invItem = inventoryItems.find(i => i.productId === product._id)
-    if (!invItem || invItem.currentQuantity <= 0) {
-      setBarcodeError(t('noStock'))
-      return
-    }
+    if (!invItem || invItem.currentQuantity <= 0) return t('noStock')
 
     const inCart = cart[product._id] || 0
-    if (inCart >= invItem.currentQuantity) {
-      setBarcodeError(t('noStock'))
-      return
-    }
+    if (inCart >= invItem.currentQuantity) return t('noStock')
 
     setCart(prev => {
       const current = prev[product._id] || 0
       if (current >= invItem.currentQuantity) return prev
       return { ...prev, [product._id]: current + 1 }
     })
+    return null
+  }, [products, inventoryItems, cart])
 
+  const handleBarcodeSubmit = useCallback(() => {
+    const err = addBarcodeProduct(barcodeInput)
+    if (err) {
+      setBarcodeError(err)
+      return
+    }
     setBarcodeInput('')
     setBarcodeError('')
     setShowBarcode(false)
-  }, [barcodeInput, products, inventoryItems, cart])
+  }, [addBarcodeProduct, barcodeInput])
 
   const handleConfirmSale = useCallback(async () => {
     if (totalPieces === 0 || submitting) return
@@ -192,7 +193,7 @@ export default function SalesPage() {
         title={t('sales')}
         subtitle={t('salesSubtitle')}
         actions={
-          <button onClick={() => { setShowBarcode(true); setBarcodeError('') }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
+          <button onClick={() => { setShowBarcodeScanner(true); setError(null) }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
             <Scan size={18} />
           </button>
         }
@@ -439,13 +440,16 @@ export default function SalesPage() {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000,
+          padding: 16,
         }}>
           <div style={{
-            width: 360,
+            width: '100%',
+            maxWidth: 360,
             padding: 24,
             borderRadius: 12,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
+            boxSizing: 'border-box',
           }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--color-text)' }}>
               {t('barcode')}ni kiriting
@@ -513,6 +517,23 @@ export default function SalesPage() {
         </div>
       )}
 
+      {/* Camera Barcode Scanner */}
+      <BarcodeScannerModal
+        open={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onBarcodeDetected={(code) => {
+          const err = addBarcodeProduct(code)
+          if (err) {
+            setShowBarcodeScanner(false)
+            setBarcodeInput(code)
+            setBarcodeError(err)
+            setShowBarcode(true)
+          }
+        }}
+        onManualInput={() => { setShowBarcodeScanner(false); setShowBarcode(true); setBarcodeError('') }}
+        closeOnDetect={false}
+      />
+
       <div style={{
         position: 'sticky',
         bottom: 0,
@@ -565,7 +586,7 @@ export default function SalesPage() {
             {t('cancel')}
           </button>
           <button
-            onClick={() => { setShowBarcode(true); setBarcodeError('') }}
+            onClick={() => { setShowBarcodeScanner(true); setError(null) }}
             style={{
               display: 'flex',
               alignItems: 'center',

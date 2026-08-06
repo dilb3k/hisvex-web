@@ -593,7 +593,7 @@ export default function SettingsPage() {
           <div onClick={(e) => e.stopPropagation()} style={{
             width: '100%', maxWidth: 420,
             background: 'var(--color-surface)', borderRadius: 16,
-            border: '1px solid var(--color-border)', overflow: 'hidden',
+            border: '1px solid var(--color-border)', overflowY: 'auto', maxHeight: '90vh',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -782,7 +782,8 @@ export default function SettingsPage() {
               background: 'var(--color-surface)',
               borderRadius: 16,
               border: '1px solid var(--color-border)',
-              overflow: 'hidden',
+              overflowY: 'auto',
+              maxHeight: '90vh',
             }}
           >
             <div style={{
@@ -941,7 +942,7 @@ export default function SettingsPage() {
           <div onClick={(e) => e.stopPropagation()} style={{
             width: '100%', maxWidth: 380,
             background: 'var(--color-surface)', borderRadius: 16,
-            border: '1px solid var(--color-border)', overflow: 'hidden',
+            border: '1px solid var(--color-border)', overflowY: 'auto', maxHeight: '90vh',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',

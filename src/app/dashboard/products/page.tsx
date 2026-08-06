@@ -358,7 +358,7 @@ export default function ProductsPage() {
         title={t('products')}
         actions={
           <>
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
               <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
               <input
                 type="text"
@@ -366,7 +366,7 @@ export default function ProductsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="search-input"
-                style={{ paddingLeft: 36, width: 240 }}
+                style={{ paddingLeft: 36, width: '100%', maxWidth: 260 }}
               />
             </div>
             <button
@@ -748,7 +748,8 @@ export default function ProductsPage() {
             background: 'var(--color-surface)',
             borderRadius: 14,
             padding: 24,
-            width: 360,
+            width: '100%',
+            maxWidth: 360,
             border: '1px solid var(--color-border)',
             boxShadow: 'var(--shadow-lg)',
           }} onClick={(e) => e.stopPropagation()}>
@@ -773,7 +774,7 @@ export default function ProductsPage() {
       {/* Restock Modal */}
       {showRestockModal && restockProduct && (
         <div style={overlay} onClick={closeRestockModal}>
-          <div style={{ ...modalContainer, width: 440 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ ...modalContainer, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeader}>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{t('restock')}</span>
               <button onClick={closeRestockModal} style={{
@@ -885,7 +886,8 @@ export default function ProductsPage() {
             background: 'var(--color-surface)',
             borderRadius: 14,
             padding: 24,
-            width: 380,
+            width: '100%',
+            maxWidth: 380,
             border: '1px solid var(--color-border)',
             boxShadow: 'var(--shadow-lg)',
           }} onClick={(e) => e.stopPropagation()}>
@@ -915,7 +917,8 @@ export default function ProductsPage() {
             background: 'var(--color-surface)',
             borderRadius: 14,
             padding: 24,
-            width: 380,
+            width: '100%',
+            maxWidth: 380,
             border: '1px solid var(--color-border)',
             textAlign: 'center',
             boxShadow: 'var(--shadow-lg)',

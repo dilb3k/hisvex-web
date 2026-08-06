@@ -10,10 +10,12 @@ export const overlay: CSSProperties = {
   zIndex: 1000,
   animation: 'fadeIn 0.2s ease',
   backdropFilter: 'blur(4px)',
+  padding: 16,
 }
 
 export const modalContainer: CSSProperties = {
-  width: 480,
+  width: '100%',
+  maxWidth: 480,
   maxHeight: '90vh',
   background: 'var(--color-bg-alt)',
   borderRadius: 16,

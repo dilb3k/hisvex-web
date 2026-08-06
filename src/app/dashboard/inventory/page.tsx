@@ -43,12 +43,11 @@ const s: Record<string, React.CSSProperties> = {
   dateText: { fontSize: 15, fontWeight: 700, color: 'var(--color-text)', lineHeight: '20px' },
   weekdayText: { fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: '16px' },
   readOnlyBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, background: 'rgba(239,68,68,0.12)', color: 'var(--color-danger)', fontSize: 11, fontWeight: 600, marginLeft: 8 },
-  summaryRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 },
   summaryItem: { padding: '14px 16px', borderRadius: 10, background: 'var(--color-surface)', border: '1px solid var(--color-border)', textAlign: 'center' },
   summaryLabel: { fontSize: 11, color: 'var(--color-text-secondary)' },
-  summaryValue: { fontSize: 16, fontWeight: 700, marginTop: 2 },
+  summaryValue: { fontSize: 16, fontWeight: 700, marginTop: 2, overflowWrap: 'anywhere', lineHeight: 1.2 },
   card: { padding: 16, borderRadius: 12, background: 'var(--color-surface)', border: '1px solid var(--color-border)', marginBottom: 8, cursor: 'pointer', transition: 'box-shadow 0.15s' },
-  modal: { width: 420, maxHeight: '90vh', overflowY: 'auto', padding: 24, borderRadius: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lg)' },
+  modal: { width: '100%', maxWidth: 420, maxHeight: '90vh', overflowY: 'auto', padding: 24, borderRadius: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lg)' },
   modalTitle: { fontSize: 16, fontWeight: 600, marginBottom: 4 },
   modalPrice: { fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 },
   fieldRow: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--color-border)' },
@@ -307,7 +306,7 @@ export default function InventoryPage() {
       />
       {renderDateNav()}
       {renderSearch()}
-      <div style={s.summaryRow}>
+      <div className="summary-grid">
         <div style={s.summaryItem}><div style={s.summaryLabel}>{t('remaining')}</div><div style={s.summaryValue}>{totals.remaining}</div></div>
         <div style={s.summaryItem}><div style={s.summaryLabel}>{t('sold')}</div><div style={s.summaryValue}>{totals.sold}</div></div>
         <div style={s.summaryItem}><div style={s.summaryLabel}>{t('revenue')}</div><div style={s.summaryValue}>{formatMoney(totals.revenue)}</div></div>

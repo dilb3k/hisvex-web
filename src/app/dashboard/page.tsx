@@ -289,36 +289,36 @@ export default function StatisticsPage() {
   return (
     <div style={{ maxWidth: 780, margin: '0 auto' }}>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: -0.3, color: 'var(--color-text)' }}>{t('statistics')}</h2>
           <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '2px 0 0' }}>{periodLabel}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={handleDownload} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 10,
             border: '1px solid var(--color-border)', background: 'var(--color-surface)',
             color: 'var(--color-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            transition: 'all 0.15s',
+            transition: 'all 0.15s', whiteSpace: 'nowrap',
           }}><Download size={16} />{t('downloadStatistics')}</button>
           <button onClick={handleOpenAllTime} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 10,
             border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            transition: 'opacity 0.15s',
+            transition: 'opacity 0.15s', whiteSpace: 'nowrap',
           }}><CalendarClock size={16} />{t('allTimeStatistics')}</button>
         </div>
       </div>
 
       {/* Period tabs + refresh */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <div style={{ flex: 1, display: 'flex', background: 'var(--color-surface)', borderRadius: 12, padding: 3, border: '1px solid var(--color-border)' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', background: 'var(--color-surface)', borderRadius: 12, padding: 3, border: '1px solid var(--color-border)' }}>
           {PERIODS.map((p) => (
             <button key={p} onClick={() => setPeriod(p)} style={{
-              flex: 1, padding: '9px 0', border: 'none', borderRadius: 9,
+              flex: 1, minWidth: 0, padding: '9px 4px', border: 'none', borderRadius: 9,
               background: period === p ? 'var(--color-primary)' : 'transparent',
               color: period === p ? '#fff' : 'var(--color-text-secondary)',
-              fontWeight: period === p ? 700 : 600, fontSize: 13, cursor: 'pointer',
-              transition: 'all 0.2s',
+              fontWeight: period === p ? 700 : 600, fontSize: 12, cursor: 'pointer',
+              transition: 'all 0.2s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>{t(p)}</button>
           ))}
         </div>
@@ -326,7 +326,7 @@ export default function StatisticsPage() {
           width: 42, height: 42, borderRadius: 12, border: '1px solid var(--color-border)',
           background: 'var(--color-surface)', color: 'var(--color-text)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s',
+          opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s', flexShrink: 0,
         }}>
           <RefreshCw size={17} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
         </button>
@@ -367,7 +367,7 @@ export default function StatisticsPage() {
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 1 }}>
               <Wallet size={15} /> {t('totalRevenue')}
             </div>
-            <div style={{ position: 'relative', fontSize: 34, fontWeight: 800, color: '#fff', marginTop: 8, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ position: 'relative', fontSize: 'clamp(22px, 7vw, 34px)', fontWeight: 800, color: '#fff', marginTop: 8, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15, overflowWrap: 'anywhere' }}>
               {formatMoney(totals.revenue)}
             </div>
             <div style={{ position: 'relative', display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
@@ -444,7 +444,7 @@ export default function StatisticsPage() {
           onClick={() => setShowAllTime(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{
             width: '100%', maxWidth: 480, background: 'var(--color-surface)', borderRadius: 16,
-            border: '1px solid var(--color-border)', overflow: 'hidden',
+            border: '1px solid var(--color-border)', maxHeight: '90vh', overflowY: 'auto',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('allTimeStatisticsTitle')}</h3>
@@ -454,7 +454,7 @@ export default function StatisticsPage() {
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}><X size={18} /></button>
             </div>
-            <div style={{ display: 'flex', gap: 10, padding: 20 }}>
+            <div style={{ display: 'flex', gap: 10, padding: 20, flexWrap: 'wrap' }}>
               <div onClick={() => {}} style={{ flex: 1, padding: 12, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer' }}>
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{t('rangeFrom')}</div>
                 <input type="date" value={allTimeFrom} onChange={(e) => setAllTimeFrom(e.target.value)} style={{

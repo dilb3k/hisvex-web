@@ -300,7 +300,7 @@ export default function DebtorsPage() {
         <div style={{ position: 'relative', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 1 }}>
           {t('totalDebt')}
         </div>
-        <div style={{ position: 'relative', fontSize: 30, fontWeight: 800, color: '#fff', marginTop: 4, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ position: 'relative', fontSize: 'clamp(22px, 7vw, 30px)', fontWeight: 800, color: '#fff', marginTop: 4, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15, overflowWrap: 'anywhere' }}>
           {formatMoney(totalDebt)}
         </div>
         <div style={{ position: 'relative', fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 6 }}>
@@ -397,6 +397,9 @@ export default function DebtorsPage() {
                 fontWeight: 700,
                 color: 'var(--color-danger)',
                 whiteSpace: 'nowrap',
+                maxWidth: '55%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}>
                 {formatMoney(debtor.amount)}
               </div>
@@ -755,7 +758,8 @@ export default function DebtorsPage() {
           justifyContent: 'center',
         }}>
           <div style={{
-            width: 340,
+            width: '100%',
+            maxWidth: 340,
             padding: 24,
             borderRadius: 12,
             background: 'var(--color-surface)',

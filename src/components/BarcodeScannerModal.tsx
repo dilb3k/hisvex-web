@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { AlertTriangle, Check, Keyboard, RotateCw, Scan, X } from 'lucide-react'
 
@@ -10,15 +10,31 @@ type Props = {
   onBarcodeDetected: (data: string) => void
   conflictCheck?: (barcode: string) => { conflictName?: string } | null
   onManualInput?: () => void
+  closeOnDetect?: boolean
 }
 
-export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflictCheck, onManualInput }: Props) {
+export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflictCheck, onManualInput, closeOnDetect = true }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const pausedRef = useRef(false)
   const [permissionError, setPermissionError] = useState<string | null>(null)
   const [scanned, setScanned] = useState<string | null>(null)
   const [conflict, setConflict] = useState<{ conflictName?: string } | null>(null)
+
+  const stopCamera = useCallback(() => {
+    try {
+      controlsRef.current?.stop()
+    } catch {
+      // ignore
+    }
+    controlsRef.current = null
+    const video = videoRef.current
+    if (video && video.srcObject) {
+      const stream = video.srcObject as MediaStream
+      stream.getTracks().forEach(t => t.stop())
+      video.srcObject = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -68,10 +84,9 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
 
     return () => {
       cancelled = true
-      controlsRef.current?.stop()
-      controlsRef.current = null
+      stopCamera()
     }
-  }, [open, conflictCheck])
+  }, [open, conflictCheck, stopCamera])
 
   if (!open) return null
 
@@ -84,7 +99,11 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
   const confirm = () => {
     if (!scanned) return
     onBarcodeDetected(scanned)
-    onClose()
+    if (closeOnDetect) {
+      onClose()
+    } else {
+      rescan()
+    }
   }
 
   return (
@@ -120,11 +139,23 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
+            flexShrink: 0,
           }}
         >
           <X size={22} />
         </button>
-        <span style={{ color: '#fff', fontSize: 15, fontWeight: 600 }}>
+        <span style={{
+          color: '#fff',
+          fontSize: 14,
+          fontWeight: 600,
+          flex: 1,
+          minWidth: 0,
+          textAlign: 'center',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          padding: '0 8px',
+        }}>
           Shtrixkodni skaner qilish
         </span>
         <button
@@ -138,9 +169,10 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
             color: '#fff',
             fontSize: 13,
             fontWeight: 600,
-            padding: '10px 14px',
+            padding: '10px 12px',
             borderRadius: 10,
             cursor: 'pointer',
+            flexShrink: 0,
           }}
         >
           <Keyboard size={16} />
@@ -153,10 +185,11 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
           <div style={{
             background: '#18181e',
             borderRadius: 18,
-            padding: 28,
+            padding: 'clamp(20px, 6vw, 28px)',
             maxWidth: 340,
             width: '100%',
             textAlign: 'center',
+            boxSizing: 'border-box',
           }}>
             <Scan size={40} color="#7c3aed" style={{ margin: '0 auto 12px' }} />
             <div style={{ color: '#fff', fontSize: 17, fontWeight: 700, marginBottom: 6 }}>
@@ -220,10 +253,12 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
                   background: 'rgba(0,0,0,0.78)',
                   borderRadius: 18,
                   padding: 24,
-                  minWidth: 280,
+                  width: '100%',
                   maxWidth: 360,
+                  minWidth: 0,
                   textAlign: 'center',
                   border: '1px solid rgba(255,255,255,0.12)',
+                  boxSizing: 'border-box',
                 }}>
                   {conflict ? (
                     <AlertTriangle size={26} color="#f59e0b" style={{ margin: '0 auto 10px' }} />
@@ -258,7 +293,7 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-                <div style={{ position: 'relative', width: 280, height: 180 }}>
+                <div style={{ position: 'relative', width: 'min(72vw, 280px)', aspectRatio: '16 / 10' }}>
                   <div style={{
                     position: 'absolute', inset: 0,
                     border: '1.5px solid rgba(124,58,237,0.7)',
@@ -272,8 +307,8 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
                   ].map((c, i) => (
                     <div key={i} style={{
                       position: 'absolute',
-                      width: 28,
-                      height: 28,
+                      width: 'clamp(22px, 8vw, 28px)',
+                      height: 'clamp(22px, 8vw, 28px)',
                       ...(c.t !== undefined ? { top: c.t } : { bottom: c.b }),
                       ...(c.l !== undefined ? { left: c.l } : { right: c.r }),
                       ...(c.bt !== undefined ? { borderTopWidth: c.bt } : { borderBottomWidth: c.bb }),

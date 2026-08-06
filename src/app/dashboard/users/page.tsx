@@ -472,7 +472,7 @@ export default function UsersPage() {
           )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {filtered.map((admin) => {
             const days = daysUntilExpiry(admin.subscriptionEndDate)
             const isUnlimited = admin.tier === 'pro' && !admin.subscriptionEndDate

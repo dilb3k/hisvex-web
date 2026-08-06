@@ -160,7 +160,7 @@ export default function LoginPage() {
       alignItems: 'center',
       justifyContent: 'center',
       background: C.bg,
-      padding: 32,
+      padding: 'clamp(16px, 5vw, 32px)',
       position: 'relative',
       overflow: 'hidden',
     }}>
