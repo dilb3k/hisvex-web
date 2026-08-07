@@ -61,6 +61,12 @@ export const translations = {
     dailySnapshot: "Kunlik hisobot",
     today: 'Bugun',
     totalDebt: 'Jami qarz',
+    // item 12 — desktop's copy under this key reads "Qarzdorlaringizni kuzatib
+    // boring" ("keep track of your debtors"), vaguer than web's existing
+    // concrete action+object phrasing here, which also matches the style other
+    // reconciled subtitles use (e.g. usersSubtitle "...yarating va
+    // boshqaring"). Kept web's phrasing; desktop reconciling to match is out
+    // of scope for this pass (separate repo/agent).
     debtorsSubtitle: 'Qarzlarni boshqarish va to\'lovlar tarixi',
     addProduct: 'Yangi mahsulot',
     editProduct: 'Mahsulotni tahrirlash',
@@ -187,9 +193,25 @@ export const translations = {
     addToDebt: 'Qo\'shish',
     subtractFromDebt: 'Ayirish',
     deleteDebtorConfirm: '{name} ni o\'chirishni tasdiqlaysizmi?',
+    // item 6 — delete confirmation didn't disclose that the debtor's full debt
+    // history is also permanently removed along with them.
+    deleteDebtorHistoryWarning: 'Bu amalni bekor qilib bo\'lmaydi — qarz tarixi ham butunlay o\'chiriladi.',
+    // item 10 — PIN-gate text for deleting a debtor, distinct from Products'
+    // deleteRequiresBlockCode (which is product-specific wording).
+    deleteDebtorRequiresBlockCode: 'Qarzdorni o\'chirish uchun himoya kodini kiriting',
     debtorDeleted: 'Qarzdor o\'chirildi',
     added: 'Qo\'shildi',
+    // item 5 — label for a debtor's very first history entry when it's
+    // cleanly detectable as the seeded opening balance, distinct from later
+    // manual "Qo'shildi" adjustments.
+    startingDebtLabel: 'Boshlang\'ich qarz',
     subtracted: 'Ayirildi',
+    // item 11 — "search found nothing" vs "genuinely no debtors" split,
+    // matching noProducts/noProductsFound's convention.
+    noDebtorsFound: 'Qarzdor topilmadi',
+    // "amount isn't editable here" hint shown in the Edit modal (amount stays
+    // Add/Subtract-only, unchanged scope-wise — just make that discoverable).
+    editDebtorAmountHint: 'Qarz miqdorini o\'zgartirish uchun qarzdor kartasini oching va "Qo\'shish"/"Ayirish" tugmalaridan foydalaning.',
     confirm: 'Tasdiqlash',
     totalRevenue: 'Jami tushum',
     totalProfit: 'Jami foyda',
@@ -533,9 +555,14 @@ export const translations = {
     addToDebt: 'Добавить',
     subtractFromDebt: 'Вычесть',
     deleteDebtorConfirm: 'Подтвердите удаление {name}?',
+    deleteDebtorHistoryWarning: 'Это действие нельзя отменить — история долга тоже будет удалена навсегда.',
+    deleteDebtorRequiresBlockCode: 'Введите защитный код для удаления должника',
     debtorDeleted: 'Должник удален',
     added: 'Добавлено',
+    startingDebtLabel: 'Начальный долг',
     subtracted: 'Вычтено',
+    noDebtorsFound: 'Должники не найдены',
+    editDebtorAmountHint: 'Чтобы изменить сумму долга, откройте карточку должника и используйте кнопки «Добавить»/«Вычесть».',
     confirm: 'Подтвердить',
     totalRevenue: 'Общий доход',
     totalProfit: 'Общая прибыль',
