@@ -4,19 +4,42 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/lib/appStore'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { getBusinessDate } from '@/lib/businessDay'
-import { resolveSellPrice, formatMoney } from '@/lib/inventory'
-import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
+import { resolveSellPrice } from '@/lib/inventory'
+import { formatMoney, kpiCard, kpiIcon } from '@/lib/sharedStyles'
+import { Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Trash2, Wallet, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
+import { ErrorBanner } from '@/components/StatusViews'
 import type { InventoryItem, Product } from '@/lib/types'
 
+// Shaped pulse-block skeleton matching this screen's actual layout (search bar
+// + hint strip + a handful of product/cart cards), following the same
+// page-local skeleton convention as InventorySkeleton in
+// dashboard/inventory/page.tsx, instead of the old bare spinner.
+function SalesSkeleton() {
+  const block = (h: number, style?: React.CSSProperties): React.CSSProperties => ({
+    height: h, borderRadius: 10, background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+    animation: 'pulse 1.4s ease-in-out infinite', ...style,
+  })
+  return (
+    <div>
+      <div style={block(42, { marginBottom: 16 })} />
+      <div style={block(36, { marginBottom: 16 })} />
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} style={block(90, { marginBottom: 10, animationDelay: `${i * 0.06}s` })} />
+      ))}
+    </div>
+  )
+}
+
 export default function SalesPage() {
-  const { products, refreshAll } = useAppStore()
+  const { products, refreshAll, showToast } = useAppStore()
 
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false)
@@ -26,26 +49,36 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null)
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
 
+  // Plain fetch — used both by the initial load and to silently refresh
+  // stock right after a completed sale. Throws on failure; callers decide
+  // how to surface that (fetchInitial below shows the persistent
+  // ErrorBanner, the post-sale refresh in handleConfirmSale is best-effort).
   const loadInventory = useCallback(async () => {
-    try {
-      const today = getBusinessDate()
-      const { data } = await inventoryApi.getByDate(today, today)
-      setInventoryItems(data?.items ?? [])
-    } catch (err) {
-      console.error('Load inventory error:', err)
-      setError(t('error') || 'Xatolik yuz berdi')
-      setTimeout(() => setError(null), 3000)
-    }
+    const today = getBusinessDate()
+    const { data } = await inventoryApi.getByDate(today, today)
+    setInventoryItems(data?.items ?? [])
   }, [])
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
+  // Initial page load — genuine fetch failure now surfaces the shared,
+  // persistent ErrorBanner + retry (same pattern as dashboard/page.tsx and
+  // dashboard/inventory/page.tsx) instead of a transient auto-clearing error
+  // line with no way to retry.
+  const fetchInitial = useCallback(async () => {
+    setLoading(true)
+    setLoadError(false)
+    try {
       await loadInventory()
+    } catch (err) {
+      console.error('Load inventory error:', err)
+      setLoadError(true)
+    } finally {
       setLoading(false)
     }
-    load()
   }, [loadInventory])
+
+  useEffect(() => {
+    fetchInitial()
+  }, [fetchInitial])
 
   const productMap = useMemo(() => {
     const map: Record<string, Product> = {}
@@ -93,10 +126,17 @@ export default function SalesPage() {
   const handleAdd = useCallback((productId: string, max: number) => {
     setCart(prev => {
       const current = prev[productId] || 0
-      if (current >= max) return prev
+      if (current >= max) {
+        // Real-bug fix: tapping + at the stock limit used to just silently
+        // no-op (the button also disables, but a cashier tapping fast can
+        // easily miss that a second tap did nothing). Now it always gives
+        // explicit feedback via the shared toast.
+        showToast(t('maxStockReached'), 'error')
+        return prev
+      }
       return { ...prev, [productId]: current + 1 }
     })
-  }, [])
+  }, [showToast])
 
   const handleRemove = useCallback((productId: string) => {
     setCart(prev => {
@@ -113,6 +153,15 @@ export default function SalesPage() {
     setCart({})
   }, [])
 
+  // One-tap reset of a single cart line to 0 — avoids repeatedly tapping "-"
+  // down to zero to undo an over-added line.
+  const clearLine = useCallback((productId: string) => {
+    setCart(prev => {
+      const { [productId]: _, ...rest } = prev
+      return rest
+    })
+  }, [])
+
   const addBarcodeProduct = useCallback((code: string): string | null => {
     const trimmed = code.trim()
     if (!trimmed) return null
@@ -124,7 +173,7 @@ export default function SalesPage() {
     if (!invItem || invItem.currentQuantity <= 0) return t('noStock')
 
     const inCart = cart[product._id] || 0
-    if (inCart >= invItem.currentQuantity) return t('noStock')
+    if (inCart >= invItem.currentQuantity) return t('maxStockReached')
 
     setCart(prev => {
       const current = prev[product._id] || 0
@@ -174,15 +223,9 @@ export default function SalesPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
-        <div style={{
-          width: 32,
-          height: 32,
-          border: '3px solid var(--color-border)',
-          borderTopColor: 'var(--color-primary)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <PageHeader title={t('sales')} subtitle={t('salesSubtitle')} />
+        <SalesSkeleton />
       </div>
     )
   }
@@ -257,6 +300,11 @@ export default function SalesPage() {
         {t('salesHint')}
       </p>
 
+      {/* Genuine page-load failure — persistent banner with retry, replacing
+          the old transient auto-clearing error text with no way to recover
+          short of a full page reload. */}
+      {loadError && <ErrorBanner onRetry={fetchInitial} />}
+
       {success && (
         <div style={{
           padding: '10px 14px',
@@ -270,6 +318,9 @@ export default function SalesPage() {
         </div>
       )}
 
+      {/* Genuine post-checkout failure — a one-off action error, kept as the
+          existing transient inline banner (distinct from the persistent
+          ErrorBanner above, which is for the page failing to load at all). */}
       {error && (
         <div style={{
           padding: '10px 14px',
@@ -367,9 +418,9 @@ export default function SalesPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 32,
-                          height: 32,
-                          borderRadius: 8,
+                          width: 38,
+                          height: 38,
+                          borderRadius: 9,
                           border: `1px solid ${cartQty > 0 ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: cartQty > 0 ? 'var(--color-primary-soft)' : 'transparent',
                           color: cartQty > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
@@ -377,7 +428,7 @@ export default function SalesPage() {
                           opacity: cartQty === 0 ? 0.5 : 1,
                         }}
                       >
-                        <Minus size={16} />
+                        <Minus size={18} />
                       </button>
                       <span style={{
                         fontSize: 16,
@@ -389,16 +440,22 @@ export default function SalesPage() {
                       }}>
                         {cartQty}
                       </span>
+                      {/* No `disabled` attribute here (unlike "-" above): a
+                          disabled HTML button never fires onClick, so the
+                          "at max stock" toast inside handleAdd could never
+                          show. The hard block still lives in handleAdd's own
+                          `current >= max` check — this is purely additive
+                          feedback, not a new gate. Visual dimming stays via
+                          cursor/opacity so it still reads as disabled. */}
                       <button
                         onClick={() => handleAdd(item.productId, item.currentQuantity)}
-                        disabled={cartQty >= item.currentQuantity}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 32,
-                          height: 32,
-                          borderRadius: 8,
+                          width: 38,
+                          height: 38,
+                          borderRadius: 9,
                           border: `1px solid ${cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: cartQty < item.currentQuantity ? 'var(--color-primary-soft)' : 'transparent',
                           color: cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-text-secondary)',
@@ -406,14 +463,14 @@ export default function SalesPage() {
                           opacity: cartQty >= item.currentQuantity ? 0.5 : 1,
                         }}
                       >
-                        <Plus size={16} />
+                        <Plus size={18} />
                       </button>
                     </div>
                   </div>
 
                   {isActive && (
                     <div style={{
-                      padding: '6px 14px',
+                      padding: '6px 10px 6px 14px',
                       borderTop: '1px solid var(--color-border)',
                       background: 'var(--color-primary-soft)',
                       display: 'flex',
@@ -424,7 +481,30 @@ export default function SalesPage() {
                       fontWeight: 500,
                     }}>
                       <span>{t('saleTotal')}:</span>
-                      <span>{formatMoney(cartQty * price)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{formatMoney(cartQty * price)}</span>
+                        {/* One-tap line reset — avoids tapping "-" repeatedly
+                            down to zero to undo an over-added line. */}
+                        <button
+                          onClick={() => clearLine(item.productId)}
+                          title={t('clearLine')}
+                          aria-label={t('clearLine')}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 26,
+                            height: 26,
+                            borderRadius: 7,
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--color-text-secondary)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -545,23 +625,45 @@ export default function SalesPage() {
         borderRadius: '12px 12px 0 0',
         padding: '12px 16px',
       }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 10,
-        }}>
-          <div>
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}: </span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>
-              {formatMoney(totalRevenue)}
-            </span>
+        {/* Running-total KPI chips — same kpiCard/kpiIcon primitive and
+            --color-metric-revenue/qty identity colors already established by
+            the Statistics/Inventory redesign, instead of the old plain-text
+            pairs that sat visually quieter than the buttons below them
+            despite being the most important thing to see mid-sale. */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+          <div style={{ ...kpiCard, flex: 1.4, padding: 12, gap: 10 }}>
+            <div style={{ ...kpiIcon, width: 34, height: 34, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}>
+              <Wallet size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}</div>
+              <div style={{
+                fontSize: 19,
+                fontWeight: 800,
+                color: 'var(--color-metric-revenue)',
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: -0.3,
+                overflowWrap: 'anywhere',
+              }}>
+                {formatMoney(totalRevenue)}
+              </div>
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t('soldPieces')}: </span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>
-              {totalPieces}
-            </span>
+          <div style={{ ...kpiCard, flex: 1, padding: 12, gap: 10 }}>
+            <div style={{ ...kpiIcon, width: 34, height: 34, background: 'var(--color-metric-qty-soft)', color: 'var(--color-metric-qty)' }}>
+              <ShoppingCart size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('soldPieces')}</div>
+              <div style={{
+                fontSize: 19,
+                fontWeight: 800,
+                color: 'var(--color-metric-qty)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {totalPieces}
+              </div>
+            </div>
           </div>
         </div>
 

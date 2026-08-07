@@ -155,10 +155,15 @@ export const translations = {
     saleTotal: 'Jami savdo',
     confirmSale: 'Savdoni tasdiqlash',
     salesHint: 'Mahsulot qoldiqlaridan sotish',
-    salesSubtitle: 'Qoldiqlardan sotish - ombor hajmini boshqaring',
+    // Reconciled with desktop's copy under this same key (was previously
+    // diverged: "Qoldiqlardan sotish - ombor hajmini boshqaring") — desktop's
+    // phrasing reads clearer and more action-oriented for a cashier screen.
+    salesSubtitle: 'Sotuvlarni qayd eting va hisob-kitob qiling',
     scanBarcode: 'Shtrix kod skanerlash',
     noStock: 'Sotish uchun mahsulot yo\'q',
     enterValidQuantity: 'To\'g\'ri miqdor kiriting',
+    maxStockReached: 'Omborda shuncha bor',
+    clearLine: 'Tozalash',
     addDebtor: 'Qarzdor qo\'shish',
     editDebtor: 'Qarzdorni tahrirlash',
     debtorName: 'Ism',
@@ -491,10 +496,13 @@ export const translations = {
     saleTotal: 'Итого продажа',
     confirmSale: 'Подтвердить продажу',
     salesHint: 'Продажа из остатков',
-    salesSubtitle: 'Продажа из остатков - управляйте объёмом склада',
+    // Reconciled with desktop's copy under this same key, see uz section note.
+    salesSubtitle: 'Фиксируйте продажи и ведите расчеты',
     scanBarcode: 'Сканировать штрих-код',
     noStock: 'Нет товаров для продажи',
     enterValidQuantity: 'Введите правильное количество',
+    maxStockReached: 'На складе столько и есть',
+    clearLine: 'Очистить',
     addDebtor: 'Добавить должника',
     editDebtor: 'Редактировать должника',
     debtorName: 'Имя',
