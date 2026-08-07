@@ -503,20 +503,46 @@ export default function StatisticsPage() {
 
   const handleDownload = () => {
     if (!inventoryItems.length) return
-    const rows = [['Mahsulot', 'Kelish', 'Sotish', 'Sotilgan', 'Tushum', 'Foyda']]
+    // Column order/format matches the paper/Excel ledger businesses already
+    // keep (№, Tovar, Olingan/Sotilish narhi, Soni/Qoldi/Sotildi, then the
+    // four money columns Olingan/Umumiy/Sotilgan/Qoldi summa, Foyda) — not
+    // the app's own internal terminology, so an exported report drops
+    // straight into the same layout a bar owner is already used to.
+    const rows = [['№', 'Tovar', 'Olingan narhi', 'Sotilish narhi', 'Soni', 'Qoldi', 'Sotildi', 'Olingan summa', 'Umumiy summa', 'Sotilgan summa', 'Qoldi summasi', 'Foyda']]
+    let totalSoni = 0, totalQoldi = 0, totalSotildi = 0
+    let totalOlinganSumma = 0, totalUmumiySumma = 0, totalSotilganSumma = 0, totalQoldiSumma = 0, totalFoyda = 0
+    let idx = 0
     for (const item of inventoryItems) {
+      idx += 1
       const p = item.product
       const name = p?.name || 'Noma\'lum'
       const buy = resolveBuyPrice(item, p)
       const sell = resolveSellPrice(item, p)
       const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-      const revenue = (item as { revenue?: number }).revenue ?? sold * sell
-      const profit = item.realizedProfit ?? sold * (sell - buy)
-      rows.push([name, String(buy), String(sell), String(sold), String(revenue), String(profit)])
+      const remaining = Math.max(item.currentQuantity ?? 0, 0)
+      const sold = item.sold ?? Math.max(opening - remaining, 0)
+      const olinganSumma = opening * buy
+      const umumiySumma = opening * sell
+      const sotilganSumma = (item as { revenue?: number }).revenue ?? sold * sell
+      const qoldiSumma = remaining * sell
+      const foyda = (sell - buy) * opening
+      rows.push([
+        String(idx), name, String(buy), String(sell), String(opening), String(remaining), String(sold),
+        String(olinganSumma), String(umumiySumma), String(sotilganSumma), String(qoldiSumma), String(foyda),
+      ])
+      totalSoni += opening
+      totalQoldi += remaining
+      totalSotildi += sold
+      totalOlinganSumma += olinganSumma
+      totalUmumiySumma += umumiySumma
+      totalSotilganSumma += sotilganSumma
+      totalQoldiSumma += qoldiSumma
+      totalFoyda += foyda
     }
-    const totals = computeTotals(inventoryItems)
-    rows.push(['Jami', '', '', String(totals.soldItems), String(totals.earnedRevenue), String(totals.earnedProfit)])
+    rows.push([
+      '', 'Jami', '', '', String(totalSoni), String(totalQoldi), String(totalSotildi),
+      String(totalOlinganSumma), String(totalUmumiySumma), String(totalSotilganSumma), String(totalQoldiSumma), String(totalFoyda),
+    ])
 
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -690,37 +716,10 @@ export default function StatisticsPage() {
             ))}
           </div>
 
-          {/* Section B — "Ombordagi holat" (inventory-at-rest / projected). Outline cards, not filled. */}
-          {overallTotals && (
-            <>
-              <div style={{ marginBottom: 8 }}>
-                <div style={SECTION_LABEL}><Archive size={13} /> {t('statsInventoryStatus')}</div>
-                <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '3px 0 0' }}>{t('statsInventorySubtitle')}</p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
-                {[
-                  { icon: <Package size={15} />, label: t('remainingPieces'), value: String(overallTotals.remainingItems) },
-                  { icon: <Wallet size={15} />, label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
-                  { icon: <TrendingUp size={15} />, label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), tag: t('estimatedTag') },
-                ].map((item, i) => (
-                  <div key={i} style={{
-                    padding: 14, borderRadius: 12, border: '1px solid var(--color-border)', background: 'transparent',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: 'var(--color-text-tertiary)' }}>
-                      {item.icon}
-                      <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0 }}>{item.label}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                      <p style={{ fontSize: 'clamp(14px, 4vw, 17px)', fontWeight: 700, margin: 0, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{item.value}</p>
-                      {item.tag && (
-                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)', borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap' }}>{item.tag}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          {/* Section B ("Ombordagi holat") was removed per feedback — its 3
+              numbers (remaining pieces/value, potential profit) are now
+              fully covered by the "To'liq statistika" full-breakdown card
+              below, so it was pure duplication. */}
 
           {/* Full breakdown — all 8 numbers together in one sequential card,
               in addition to the KPI row / Section B split above. Reuses the
