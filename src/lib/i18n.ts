@@ -341,6 +341,13 @@ export const translations = {
     phoneOptional: 'Ixtiyoriy',
     adminManagement: 'Boshqaruv',
     usersCount: 'ta foydalanuvchi',
+    // Products screen redesign (2026-08) — KPI row + form guidance copy.
+    totalSkuCount: 'Mahsulot turlari',
+    lowStockCount: 'Kam zaxira',
+    openingQuantityHint: "Bu miqdor bugungi boshlang'ich zaxira sifatida qayd etiladi",
+    requiredField: 'majburiy',
+    imageSizeHint: 'JPG yoki PNG, tavsiya etilgan hajm — 2 MB gacha',
+    deleteRequiresBlockCode: "Mahsulotni o'chirish uchun himoya kodini kiriting",
   },
   ru: {
     signIn: 'Вход',
@@ -680,6 +687,13 @@ export const translations = {
     phoneOptional: 'Необязательно',
     adminManagement: 'Управление',
     usersCount: 'пользователей',
+    // Products screen redesign (2026-08) — KPI row + form guidance copy.
+    totalSkuCount: 'Виды товаров',
+    lowStockCount: 'Мало на складе',
+    openingQuantityHint: 'Это количество будет записано как начальный остаток на сегодня',
+    requiredField: 'обязательно',
+    imageSizeHint: 'JPG или PNG, рекомендуемый размер — до 2 МБ',
+    deleteRequiresBlockCode: 'Введите защитный код для удаления товара',
   },
 }
 

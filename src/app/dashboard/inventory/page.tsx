@@ -96,7 +96,17 @@ export default function InventoryPage() {
   const refreshKey = useAppStore((s) => s.refreshKey)
   const refreshAll = useAppStore((s) => s.refreshAll)
   const storeProducts = useAppStore((s) => s.products)
+  const loadProducts = useAppStore((s) => s.loadProducts)
   const showToast = useAppStore((s) => s.showToast)
+
+  // Item 5 (products redesign spec) — ensure the product catalog is actually
+  // loaded so the "genuinely no products yet" vs "just no inventory entries
+  // today" distinction below is reliable, not a false positive from
+  // storeProducts happening to be empty because nothing has populated it yet
+  // this session. Cheap no-op if the store already has products cached.
+  useEffect(() => {
+    loadProducts()
+  }, [loadProducts])
 
   const fetchData = useCallback(() => {
     if (isFutureDate) { setItems([]); setLoading(false); return () => {} }
@@ -158,6 +168,9 @@ export default function InventoryPage() {
   }, [combinedData, search])
 
   const isSearchMiss = search.trim().length > 0 && combinedData.length > 0 && filteredItems.length === 0
+  // Item 5 — distinguish "the product catalog itself is empty" (point the
+  // user at Products) from "just no inventory entries for this date yet".
+  const isCatalogEmpty = storeProducts.length === 0
 
   const totals = useMemo(() => {
     let start = 0, remaining = 0, sold = 0, revenue = 0, profit = 0
@@ -410,7 +423,7 @@ export default function InventoryPage() {
           {filteredItems.length === 0 && (
             <div style={s.emptyWrap}>
               <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-              <p style={{ fontSize: 15, fontWeight: 500 }}>{isSearchMiss ? t('noProductsFound') : t('noInventory')}</p>
+              <p style={{ fontSize: 15, fontWeight: 500 }}>{isSearchMiss ? t('noProductsFound') : isCatalogEmpty ? t('addProductsFirst') : t('noInventory')}</p>
             </div>
           )}
           {filteredItems.map((entry, idx) => {
