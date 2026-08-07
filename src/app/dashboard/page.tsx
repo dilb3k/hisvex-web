@@ -722,6 +722,42 @@ export default function StatisticsPage() {
             </>
           )}
 
+          {/* Full breakdown — all 8 numbers together in one sequential card,
+              in addition to the KPI row / Section B split above. Reuses the
+              same (now-fixed) overallTotals values, so this is purely an
+              additive presentation, not a second data source. */}
+          {overallTotals && (
+            <>
+              <div style={{ marginBottom: 8 }}>
+                <div style={SECTION_LABEL}><BarChart3 size={13} /> {t('statsFullBreakdown')}</div>
+                <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '3px 0 0' }}>{t('statsFullBreakdownSubtitle')}</p>
+              </div>
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20,
+                padding: 14, borderRadius: 14, border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+              }}>
+                {[
+                  { label: t('totalSellablePieces'), value: String(overallTotals.sellableItems) },
+                  { label: t('soldPieces'), value: String(overallTotals.soldItems) },
+                  { label: t('totalSellValue'), value: formatMoney(overallTotals.sellableValue) },
+                  { label: t('soldValue'), value: formatMoney(overallTotals.earnedRevenue) },
+                  { label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), color: 'var(--color-metric-profit)' },
+                  { label: t('earnedProfit'), value: formatMoney(overallTotals.earnedProfit), color: 'var(--color-metric-profit)' },
+                  { label: t('remainingPieces'), value: String(overallTotals.remainingItems) },
+                  { label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
+                ].map((item, i) => (
+                  <div key={i}>
+                    <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>{item.label}</p>
+                    <p style={{
+                      fontSize: 'clamp(13px, 3.5vw, 15px)', fontWeight: 700, margin: 0,
+                      color: item.color ?? 'var(--color-text)', fontVariantNumeric: 'tabular-nums',
+                    }}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           {/* Section C — Rankings */}
           <div style={{ marginBottom: 8 }}>
             <div style={SECTION_LABEL}><Trophy size={13} /> {t('statsRankings')}</div>
