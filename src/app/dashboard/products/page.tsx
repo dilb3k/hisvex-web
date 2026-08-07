@@ -31,6 +31,7 @@ import {
   kpiIcon,
 } from '@/lib/sharedStyles'
 import { formatPhone } from '@/lib/formatters'
+import { isBlockCodeDisabled } from '@/utils/blockCode'
 
 const normalizeDigits = (text: string) => text.replace(/[^\d]/g, '')
 
@@ -135,6 +136,11 @@ export default function ProductsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  // Per-device "temporarily disable" toggle set on the Settings page — lets
+  // a user skip PIN prompts on this browser without deleting the saved
+  // code. See src/utils/blockCode.ts.
+  const [blockDisabled, setBlockDisabledState] = useState(false)
+  useEffect(() => { setBlockDisabledState(isBlockCodeDisabled()) }, [])
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
@@ -408,7 +414,7 @@ export default function ProductsPage() {
 
   const handleSave = async () => {
     if (!validate()) return
-    if (blockCode) {
+    if (blockCode && !blockDisabled) {
       setPinAction('save')
       setPinInput('')
       setPinVerifyError(null)
@@ -462,7 +468,7 @@ export default function ProductsPage() {
 
   const handleDelete = () => {
     if (!deleteTarget) return
-    if (blockCode) {
+    if (blockCode && !blockDisabled) {
       setPinAction('delete')
       setPinInput('')
       setPinVerifyError(null)
@@ -884,7 +890,7 @@ export default function ProductsPage() {
                 disabled={isSubmitting}
                 style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
               >
-                {blockCode ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
+                {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isSubmitting ? t('loading') : t('save')}
               </button>
             </div>
@@ -1063,7 +1069,7 @@ export default function ProductsPage() {
                 disabled={isDeleting}
                 style={{ ...btnDanger, opacity: isDeleting ? 0.6 : 1, cursor: isDeleting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
               >
-                {blockCode ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
+                {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isDeleting ? t('loading') : t('delete')}
               </button>
             </div>

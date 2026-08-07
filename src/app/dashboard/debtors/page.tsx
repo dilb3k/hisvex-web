@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { Debtor, DebtHistory } from '@/lib/types'
 import { formatPhone, displayPhone, formatShortDate, formatInputAmount, parseFormattedAmount } from '@/lib/formatters'
+import { isBlockCodeDisabled } from '@/utils/blockCode'
 import {
   overlay,
   modalContainer,
@@ -123,6 +124,9 @@ export default function DebtorsPage() {
   // item 10 — route Delete through the same PIN-gate pattern
   // dashboard/products/page.tsx uses when a blockCode is set.
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  // Per-device "temporarily disable" toggle set on the Settings page.
+  const [blockDisabled, setBlockDisabledState] = useState(false)
+  useEffect(() => { setBlockDisabledState(isBlockCodeDisabled()) }, [])
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
@@ -236,7 +240,7 @@ export default function DebtorsPage() {
 
   const handleDeleteConfirm = () => {
     if (!selectedDebtor || saving) return
-    if (blockCode) {
+    if (blockCode && !blockDisabled) {
       setPinInput('')
       setPinVerifyError(null)
       setShowPinVerify(true)
@@ -881,7 +885,7 @@ export default function DebtorsPage() {
                   cursor: saving ? 'not-allowed' : 'pointer',
                 }}
               >
-                {blockCode ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
+                {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {saving ? t('loading') : t('delete')}
               </button>
             </div>

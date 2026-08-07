@@ -34,6 +34,7 @@ import {
   scheduleBusinessDayStartHour,
 } from '@/lib/businessDay'
 import dayjs from 'dayjs'
+import { isBlockCodeDisabled, setBlockCodeDisabled } from '@/utils/blockCode'
 
 const THEMES = [
   { code: 'light', labelKey: 'light', icon: Sun },
@@ -128,6 +129,10 @@ export default function SettingsPage() {
   const [pinInputs, setPinInputs] = useState<string[]>(['', '', ''])
   const [pinError, setPinError] = useState<string | null>(null)
   const [isBlockBusy, setIsBlockBusy] = useState(false)
+  // Per-device (not per-account) toggle — lets a user temporarily skip PIN
+  // prompts without deleting the saved blockCode. See src/utils/blockCode.ts.
+  const [blockDisabled, setBlockDisabled] = useState(false)
+  useEffect(() => { setBlockDisabled(isBlockCodeDisabled()) }, [])
   const blockInputRef = useRef<HTMLInputElement | null>(null)
 
   const blockSteps = blockCode
@@ -212,6 +217,26 @@ export default function SettingsPage() {
     setPinStep(step + 1)
     focusBlockInput()
   }, [blockCode, persistBlockCode, focusBlockInput, showToast, t])
+
+  // Temporarily disable/re-enable PIN prompts on this device without
+  // deleting the saved code (unlike Remove, which deletes it permanently
+  // and requires re-typing a brand new one to protect again). Same PIN
+  // check as handleRemoveBlock below — toggling protection off must require
+  // proof of the current code, otherwise anyone at this browser could turn
+  // it off with zero verification while removing it correctly demands one.
+  const toggleBlockDisabled = useCallback(() => {
+    const value = pinInputs[0] ?? ''
+    if (value !== blockCode) {
+      setPinError(t('blockCodeWrong'))
+      setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
+      focusBlockInput()
+      return
+    }
+    const next = !blockDisabled
+    setBlockDisabled(next)
+    setBlockCodeDisabled(next)
+    showToast(next ? t('blockCodeTemporaryOffSaved') : t('blockCodeTemporaryOnSaved'), 'success')
+  }, [pinInputs, blockCode, blockDisabled, showToast, focusBlockInput, t])
 
   const handleRemoveBlock = useCallback(async () => {
     const value = pinInputs[0] ?? ''
@@ -771,7 +796,9 @@ export default function SettingsPage() {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{t('blockCode')}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-              {blockCode ? t('blockCodeActive') : t('blockCodeInactive')}
+              {blockCode
+                ? (blockDisabled ? t('blockCodeDisabledStatus') : t('blockCodeActive'))
+                : t('blockCodeInactive')}
             </div>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--color-text-secondary)' }} />
@@ -1045,6 +1072,19 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <div style={{ minHeight: 18, marginBottom: 20 }} />
+              )}
+
+              {blockCode && pinStep === 0 && (
+                <button
+                  onClick={toggleBlockDisabled}
+                  style={{
+                    width: '100%', padding: '13px 0', borderRadius: 10, marginBottom: 10,
+                    border: '1px solid var(--color-warning)', background: 'transparent',
+                    color: 'var(--color-warning)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {blockDisabled ? t('blockCodeTemporaryOn') : t('blockCodeTemporaryOff')}
+                </button>
               )}
 
               <div style={{ display: 'flex', gap: 10 }}>
