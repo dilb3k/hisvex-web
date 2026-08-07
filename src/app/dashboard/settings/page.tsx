@@ -21,8 +21,6 @@ import {
   ChevronRight,
   Clock,
   X,
-  Minus,
-  Plus,
   Shield,
   Lock,
   Unlock,
@@ -277,14 +275,6 @@ export default function SettingsPage() {
   const openBusinessDay = useCallback(() => {
     setEditingHour(getBusinessDayStartHour())
     setShowBusinessDay(true)
-  }, [])
-
-  const handleHourDec = useCallback(() => {
-    setEditingHour(prev => prev <= 0 ? 23 : prev - 1)
-  }, [])
-
-  const handleHourInc = useCallback(() => {
-    setEditingHour(prev => prev >= 23 ? 0 : prev + 1)
   }, [])
 
   const handleSaveBusinessDay = useCallback(() => {
@@ -885,62 +875,48 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {String(editingHour).padStart(2, '0')}:00
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                  {formatHourRange(editingHour)}
+                </div>
+              </div>
+
+              {/* Real fix: hour is now picked directly from a 24-cell grid
+                  instead of stepping through +/- one hour at a time. */}
               <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 20,
-                padding: 16,
-                borderRadius: 8,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(6, 1fr)',
+                gap: 6,
+                padding: 12,
+                borderRadius: 10,
                 background: 'var(--color-bg)',
                 marginBottom: 16,
               }}>
-                <button
-                  onClick={handleHourDec}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 8,
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--color-primary)',
-                    fontSize: 24,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Minus size={24} />
-                </button>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                    {String(editingHour).padStart(2, '0')}:00
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
-                    {formatHourRange(editingHour)}
-                  </div>
-                </div>
-                <button
-                  onClick={handleHourInc}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 8,
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--color-primary)',
-                    fontSize: 24,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Plus size={24} />
-                </button>
+                {Array.from({ length: 24 }, (_, h) => h).map((h) => {
+                  const selected = h === editingHour
+                  return (
+                    <button
+                      key={h}
+                      onClick={() => setEditingHour(h)}
+                      style={{
+                        padding: '8px 0',
+                        borderRadius: 7,
+                        border: selected ? 'none' : '1px solid var(--color-border)',
+                        background: selected ? 'var(--color-primary)' : 'var(--color-surface)',
+                        color: selected ? '#fff' : 'var(--color-text)',
+                        fontSize: 13,
+                        fontWeight: selected ? 700 : 500,
+                        fontVariantNumeric: 'tabular-nums',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {String(h).padStart(2, '0')}
+                    </button>
+                  )
+                })}
               </div>
 
               <div style={{
