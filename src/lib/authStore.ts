@@ -54,7 +54,7 @@ interface AuthState {
   setUser: (user: User) => void
   logout: () => void
   setLoading: (loading: boolean) => void
-  hydrate: () => void
+  hydrate: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -88,16 +88,43 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token: '', refreshToken: '', user: null, isAuthenticated: false })
   },
   setLoading: (isLoading) => set({ isLoading }),
-  hydrate: () => {
+  hydrate: async () => {
     try {
       const result = readPersistedToken()
-      if (result?.token) {
-        setApiToken(result.token)
-        setRefreshToken(result.refreshToken)
-        set({ token: result.token, refreshToken: result.refreshToken, user: result.user ?? null, isAuthenticated: true, isLoading: false })
-      } else {
+      if (!result?.token) {
         set({ isLoading: false })
+        return
       }
+      setApiToken(result.token)
+      setRefreshToken(result.refreshToken)
+      // Paint immediately with the cached user, then revalidate below —
+      // avoids a blank/splash screen on every load just to wait on network.
+      set({ token: result.token, refreshToken: result.refreshToken, user: result.user ?? null, isAuthenticated: true })
+
+      // Mandatory revalidation against the server on every load — the
+      // locally cached user is only a fast first paint, never the source of
+      // truth (subscription tier, block status, business day hour, etc. may
+      // have changed elsewhere). A hard auth failure (401) is already
+      // handled by the response interceptor itself (handleSessionExpired
+      // clears storage and calls unauthorizedHandler, which redirects to
+      // /login) — so the only thing left to tolerate here is a network
+      // failure, which keeps the cached session instead of forcing a login
+      // screen while offline (matches the desktop/mobile apps).
+      try {
+        const { data } = await authApi.getMe()
+        if (data) {
+          const normalized = { ...data }
+          if (!normalized._id && (normalized as any).id) {
+            normalized._id = (normalized as any).id
+          }
+          persistUser(normalized)
+          set({ user: normalized })
+        }
+      } catch {
+        // see comment above — nothing left to do for either outcome
+      }
+
+      set({ isLoading: false })
     } catch {
       set({ isLoading: false })
     }
