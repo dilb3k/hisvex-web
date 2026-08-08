@@ -50,6 +50,40 @@ export const scheduleBusinessDayStartHour = (hour: number) => {
 export const setPendingBusinessDayHour = (hour: number, from: string) => {
   pendingHour = hour
   effectiveFrom = from
+  // Persist like scheduleBusinessDayStartHour does — without this a
+  // server-provided pending change was forgotten on the next page load.
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('hisvex_pending_hour', String(hour))
+      localStorage.setItem('hisvex_pending_from', from)
+    } catch {}
+  }
+}
+
+/**
+ * Applies the server's authoritative business-day state — active hour plus any
+ * scheduled change — in one step.
+ *
+ * This app previously never applied the logged-in user's hour at all:
+ * setBusinessDayStartHour was exported but called from nowhere, so every
+ * session ran on the hardcoded default (6). For an account whose day starts at,
+ * say, 10:00 that put the web app a whole business day ahead of the server
+ * between 06:00 and 10:00 — sales posted in that window were rejected as
+ * "future date", and Statistics queried the wrong day.
+ */
+export const syncBusinessDayFromServer = (input: {
+  businessDayStartHour?: number | null
+  pendingBusinessDayStartHour?: number | null
+  businessDayEffectiveFrom?: string | null
+}) => {
+  if (typeof input.businessDayStartHour === 'number') {
+    setBusinessDayStartHour(input.businessDayStartHour)
+  }
+  if (typeof input.pendingBusinessDayStartHour === 'number' && input.businessDayEffectiveFrom) {
+    setPendingBusinessDayHour(input.pendingBusinessDayStartHour, input.businessDayEffectiveFrom)
+  } else {
+    clearPending()
+  }
 }
 
 export const getPendingBusinessDayStartHour = () => pendingHour

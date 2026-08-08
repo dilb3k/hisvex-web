@@ -1,6 +1,19 @@
 import { create } from 'zustand'
 import { setApiToken, setRefreshToken, clearApiCache, authApi } from './api'
+import { syncBusinessDayFromServer } from './businessDay'
 import type { User } from './types'
+
+// The business-day boundary is per-account, so every path that establishes or
+// refreshes the session has to push the server's value into businessDay.ts —
+// otherwise date math here silently runs on the hardcoded default.
+function applyBusinessDay(user: User | null | undefined) {
+  if (!user) return
+  syncBusinessDayFromServer({
+    businessDayStartHour: user.businessDayStartHour,
+    pendingBusinessDayStartHour: user.pendingBusinessDayStartHour,
+    businessDayEffectiveFrom: user.businessDayEffectiveFrom,
+  })
+}
 
 const STORAGE_KEY_TOKEN = 'hisvex_token'
 const STORAGE_KEY_REFRESH = 'hisvex_refresh'
@@ -73,10 +86,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     persistToken(token)
     persistRefreshToken(refreshToken)
     persistUser(normalized)
+    applyBusinessDay(normalized)
     set({ token, refreshToken, user: normalized, isAuthenticated: true })
   },
   setUser: (user) => {
     persistUser(user)
+    applyBusinessDay(user)
     set({ user })
   },
   logout: () => {
@@ -99,6 +114,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       setRefreshToken(result.refreshToken)
       // Paint immediately with the cached user, then revalidate below —
       // avoids a blank/splash screen on every load just to wait on network.
+      applyBusinessDay(result.user)
       set({ token: result.token, refreshToken: result.refreshToken, user: result.user ?? null, isAuthenticated: true })
 
       // Mandatory revalidation against the server on every load — the
@@ -118,6 +134,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             normalized._id = (normalized as any).id
           }
           persistUser(normalized)
+          applyBusinessDay(normalized)
           set({ user: normalized })
         }
       } catch {
