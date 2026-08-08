@@ -396,44 +396,19 @@ export default function LoginPage() {
                           }}
                         >?</button>
                       </div>
-                      {/* Hour must be selected from a grid, not typed —
-                          matches the picker used on the desktop app's
-                          settings screen. */}
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(6, 1fr)',
-                          gap: 6,
-                          padding: 10,
-                          borderRadius: 10,
-                          background: C.surface,
-                          border: `1.5px solid ${C.border}`,
-                        }}
+                      {/* Hour must be selected from a dropdown, not typed. */}
+                      <select
+                        value={businessDayStartHour}
+                        onChange={(e) => setBusinessDayStartHour(e.target.value)}
+                        onFocus={() => setFocusedField('businessHour')}
+                        onBlur={() => setFocusedField(null)}
+                        style={{ ...inputStyle('businessHour'), cursor: 'pointer' }}
                       >
-                        {Array.from({ length: 24 }, (_, h) => h).map((h) => {
-                          const selected = businessDayStartHour === String(h)
-                          return (
-                            <button
-                              key={h}
-                              type="button"
-                              onClick={() => setBusinessDayStartHour(String(h))}
-                              style={{
-                                padding: '8px 0',
-                                borderRadius: 7,
-                                border: selected ? 'none' : `1px solid ${C.border}`,
-                                background: selected ? C.primary : 'rgba(255,255,255,0.03)',
-                                color: selected ? '#fff' : C.text,
-                                fontSize: 12,
-                                fontWeight: selected ? 700 : 500,
-                                fontVariantNumeric: 'tabular-nums',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {String(h).padStart(2, '0')}
-                            </button>
-                          )
-                        })}
-                      </div>
+                        <option value="" disabled>{t('businessDayStartHourPlaceholder')}</option>
+                        {Array.from({ length: 24 }, (_, h) => h).map((h) => (
+                          <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                        ))}
+                      </select>
                     </div>
                   </>
                 )}
