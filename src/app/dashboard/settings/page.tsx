@@ -278,9 +278,20 @@ export default function SettingsPage() {
   }, [])
 
   const handleSaveBusinessDay = useCallback(() => {
+    // Local schedule is only this tab's own optimistic pending-state cache
+    // (see businessDay.ts) — the change was never actually reaching the
+    // backend, so it didn't survive a fresh /me fetch, another device, or
+    // even a reload once the schedule cache expired. updateMe's
+    // businessDayStartHour payload is what the backend stores as the
+    // pending value (see auth.service.ts's updateMe), same as the desktop
+    // app already does.
     scheduleBusinessDayStartHour(editingHour)
     setShowBusinessDay(false)
-    showToast(t('businessDaySaved'), 'success')
+    authApi.updateMe({ businessDayStartHour: editingHour })
+      .then(() => showToast(t('businessDaySaved'), 'success'))
+      .catch((err: unknown) => {
+        showToast(err instanceof Error ? err.message : t('error'), 'error')
+      })
   }, [editingHour, showToast, t])
 
   const formatHourRange = (hour: number) => {
