@@ -494,7 +494,17 @@ export default function StatisticsPage() {
   const margin = totals.revenue > 0 ? Math.round((totals.profit / totals.revenue) * 100) : 0
   const allProductStats = useMemo(() => buildProductRankings(inventoryItems), [inventoryItems])
   const topProducts = useMemo(() => allProductStats.filter((p) => p.sold > 0).sort((a, b) => b.sold - a.sold || b.profit - a.profit), [allProductStats])
-  const leastProducts = useMemo(() => [...allProductStats].sort((a, b) => a.sold - b.sold || a.profit - b.profit), [allProductStats])
+  // Exclude whatever is already showing in "Ko'p sotilgan" (top 5). Without
+  // this, a shop with a small catalog (e.g. 6-8 products) would see the same
+  // decent-selling product in BOTH rankings — sorting the full list ascending
+  // by `sold` still puts the 5th/6th-best seller at the bottom when there
+  // aren't enough distinct products to fill both top-5 and least-5 from
+  // disjoint pools, so "kam sotilgan" ended up showing items that were
+  // clearly not low sellers.
+  const leastProducts = useMemo(() => {
+    const topIds = new Set(topProducts.slice(0, 5).map((p) => p.id))
+    return allProductStats.filter((p) => !topIds.has(p.id)).sort((a, b) => a.sold - b.sold || a.profit - b.profit)
+  }, [allProductStats, topProducts])
   const maxLeastSold = useMemo(() => Math.max(...leastProducts.map((p) => p.sold), 1), [leastProducts])
   const allTimeTotals = useMemo(() => { if (!allTimeItems) return null; return computeTotals(allTimeItems) }, [allTimeItems])
   const allTimeBucketUnit: BucketUnit = useMemo(() => dayjs(allTimeTo).diff(dayjs(allTimeFrom), 'day') > 60 ? 'month' : 'day', [allTimeFrom, allTimeTo])
