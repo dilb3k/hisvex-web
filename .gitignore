@@ -6,3 +6,5 @@ dist
 .env.local
 .next
 *.tsbuildinfo
+.vercel
+.env*
