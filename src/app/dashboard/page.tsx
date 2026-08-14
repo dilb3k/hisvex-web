@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { inventoryApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { getBusinessDate } from '@/lib/businessDay'
@@ -369,16 +369,26 @@ function StatsSkeleton() {
 // <input type="date"> to avoid adding a new npm dependency without flagging it, but wraps
 // it in the same visual affordance desktop's `RangeButton` provides.
 function RangeDateButton({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
   return (
-    <div style={{
-      position: 'relative', flex: 1, padding: 12, borderRadius: 10, border: '1px solid var(--color-border)',
-      background: 'var(--color-bg)', overflow: 'hidden', cursor: 'pointer',
-    }}>
+    <div
+      style={{
+        // No `overflow: hidden` here: Chromium positions the native <input
+        // type="date"> calendar popup relative to this box, and clipping it
+        // was silently cutting the popup off (or preventing it from opening
+        // at all) inside the scrollable modal this sits in — that's what
+        // made the picker feel broken/unresponsive.
+        position: 'relative', flex: 1, padding: 12, borderRadius: 10, border: '1px solid var(--color-border)',
+        background: 'var(--color-bg)', cursor: 'pointer',
+      }}
+      onClick={() => inputRef.current?.showPicker?.()}
+    >
       <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
         {dayjs(value).format('DD.MM.YYYY')}
       </div>
       <input
+        ref={inputRef}
         type="date"
         value={value}
         onChange={(e) => e.target.value && onChange(e.target.value)}
