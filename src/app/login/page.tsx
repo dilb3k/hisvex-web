@@ -404,9 +404,18 @@ export default function LoginPage() {
                         onBlur={() => setFocusedField(null)}
                         style={{ ...inputStyle('businessHour'), cursor: 'pointer' }}
                       >
-                        <option value="" disabled>{t('businessDayStartHourPlaceholder')}</option>
+                        {/* Options get explicit opaque colors, not the select's
+                            translucent rgba() theme colors: the native popup list
+                            (esp. on Windows) renders its own solid background and
+                            ignores inherited alpha, which left rgba(255,255,255,0.9)
+                            text unreadable on the OS's white dropdown. */}
+                        <option value="" disabled style={{ background: C.bgMid, color: '#FFFFFF' }}>
+                          {t('businessDayStartHourPlaceholder')}
+                        </option>
                         {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-                          <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                          <option key={h} value={h} style={{ background: C.bgMid, color: '#FFFFFF' }}>
+                            {String(h).padStart(2, '0')}:00
+                          </option>
                         ))}
                       </select>
                     </div>
