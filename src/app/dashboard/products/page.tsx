@@ -482,7 +482,6 @@ export default function ProductsPage() {
   return (
     <div style={{ padding: 0 }}>
       <PageHeader
-        title={t('products')}
         actions={
           <>
             <div style={{ position: 'relative', flex: 1 }}>

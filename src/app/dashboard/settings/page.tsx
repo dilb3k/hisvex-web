@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/authStore'
 import { useAppStore } from '@/lib/appStore'
 import { adminsApi, authApi } from '@/lib/api'
-import { PageHeader } from '@/components/PageHeader'
 import { t, getLanguage, setLanguage } from '@/lib/i18n'
 import type { Language } from '@/lib/i18n'
 import type { User as AdminUser } from '@/lib/types'
@@ -338,8 +337,6 @@ export default function SettingsPage() {
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 40 }}>
-      <PageHeader title={t('settings')} subtitle={t('settingsSubtitle')} />
-
       {/* User Info */}
       {user && (
         <div style={sectionStyle}>

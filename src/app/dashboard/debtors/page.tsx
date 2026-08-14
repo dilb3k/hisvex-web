@@ -352,8 +352,6 @@ export default function DebtorsPage() {
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
       <PageHeader
-        title={t('debtors')}
-        subtitle={t('debtorsSubtitle')}
         actions={
           <button
             onClick={() => setShowAddModal(true)}

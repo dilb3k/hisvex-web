@@ -8,11 +8,25 @@ import { AlertTriangle, Check, Keyboard, RotateCw, Scan, X } from 'lucide-react'
 type Props = {
   open: boolean
   onClose: () => void
-  onBarcodeDetected: (data: string) => void
+  // In autoConfirm mode this return value drives the feedback flash:
+  // null/undefined = accepted (green flash), a string = rejected (red
+  // flash showing that message). Ignored when autoConfirm is off.
+  onBarcodeDetected: (data: string) => string | null | void
   conflictCheck?: (barcode: string) => { conflictName?: string } | null
   onManualInput?: () => void
   closeOnDetect?: boolean
+  // POS-speed mode: skip the "tap to accept" confirmation card entirely.
+  // Every plausible decode is applied immediately (via onBarcodeDetected's
+  // return value for accept/reject feedback) and the camera keeps scanning
+  // for the next item — a same-code cooldown prevents one held-up barcode
+  // from firing repeatedly while the cashier repositions it.
+  autoConfirm?: boolean
+  // Optional running total shown in the header while autoConfirm is on,
+  // so the cashier gets confidence without having to leave the camera view.
+  cartCount?: number
 }
+
+const SAME_CODE_COOLDOWN_MS = 1200
 
 // Only formats realistically used on retail/product barcodes and price-gun labels.
 // Excludes QR, Data Matrix, PDF417, Aztec, etc. so scanning a poster/URL QR code
@@ -39,7 +53,7 @@ function isPlausibleBarcode(text: string): boolean {
   return true
 }
 
-export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflictCheck, onManualInput, closeOnDetect = true }: Props) {
+export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflictCheck, onManualInput, closeOnDetect = true, autoConfirm = false, cartCount }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const pausedRef = useRef(false)
@@ -48,6 +62,11 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
   const [conflict, setConflict] = useState<{ conflictName?: string } | null>(null)
   const [rejectMessage, setRejectMessage] = useState<string | null>(null)
   const rejectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // autoConfirm-only: brief accept/reject flash instead of a confirm card.
+  const [flash, setFlash] = useState<{ ok: boolean; message?: string } | null>(null)
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastCodeRef = useRef<string | null>(null)
+  const lastCodeAtRef = useRef(0)
 
   const stopCamera = useCallback(() => {
     try {
@@ -71,6 +90,8 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
     setScanned(null)
     setConflict(null)
     setRejectMessage(null)
+    setFlash(null)
+    lastCodeRef.current = null
     pausedRef.current = false
 
     const reader = new BrowserMultiFormatReader(BARCODE_HINTS)
@@ -98,6 +119,26 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
               rejectTimeoutRef.current = setTimeout(() => setRejectMessage(null), 1800)
               return
             }
+
+            if (autoConfirm) {
+              // Same code held in front of the camera decodes on every
+              // frame — debounce it instead of adding it to the cart
+              // repeatedly while the cashier repositions the item.
+              const now = Date.now()
+              if (text === lastCodeRef.current && now - lastCodeAtRef.current < SAME_CODE_COOLDOWN_MS) return
+              lastCodeRef.current = text
+              lastCodeAtRef.current = now
+
+              const err = onBarcodeDetected(text)
+              setRejectMessage(null)
+              if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current)
+              setFlash({ ok: !err, message: err ?? undefined })
+              flashTimeoutRef.current = setTimeout(() => setFlash(null), err ? 1100 : 500)
+              // Camera keeps running — no pause, no tap required — so the
+              // next item can be scanned immediately.
+              return
+            }
+
             pausedRef.current = true
             setRejectMessage(null)
             setScanned(text)
@@ -125,8 +166,13 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
         clearTimeout(rejectTimeoutRef.current)
         rejectTimeoutRef.current = null
       }
+      if (flashTimeoutRef.current) {
+        clearTimeout(flashTimeoutRef.current)
+        flashTimeoutRef.current = null
+      }
     }
-  }, [open, conflictCheck, stopCamera])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, conflictCheck, stopCamera, autoConfirm])
 
   if (!open) return null
 
@@ -196,7 +242,9 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
           whiteSpace: 'nowrap',
           padding: '0 8px',
         }}>
-          Shtrixkodni skaner qilish
+          {autoConfirm && typeof cartCount === 'number'
+            ? `Savatda: ${cartCount} ta`
+            : 'Shtrixkodni skaner qilish'}
         </span>
         <button
           onClick={onManualInput}
@@ -279,6 +327,41 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
               playsInline
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
             />
+
+            {/* autoConfirm mode: no tap-to-accept card — just a brief
+                accept/reject flash, then the camera is already scanning
+                the next item. */}
+            {flash && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                border: `4px solid ${flash.ok ? '#22c55e' : '#ef4444'}`,
+                pointerEvents: 'none',
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  top: 16,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 16px',
+                  borderRadius: 999,
+                  background: flash.ok ? 'rgba(34,197,94,0.92)' : 'rgba(239,68,68,0.92)',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  maxWidth: 'calc(100% - 32px)',
+                  textAlign: 'center',
+                }}>
+                  {flash.ok ? <Check size={16} /> : <AlertTriangle size={16} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {flash.ok ? "Qo'shildi" : flash.message}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {scanned ? (
               <div style={{

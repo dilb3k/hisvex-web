@@ -8,7 +8,6 @@ import { resolveSellPrice } from '@/lib/inventory'
 import { formatMoney, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Trash2, Wallet, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
-import { PageHeader } from '@/components/PageHeader'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { InventoryItem, Product } from '@/lib/types'
@@ -224,7 +223,6 @@ export default function SalesPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <PageHeader title={t('sales')} subtitle={t('salesSubtitle')} />
         <SalesSkeleton />
       </div>
     )
@@ -235,16 +233,6 @@ export default function SalesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <PageHeader
-        title={t('sales')}
-        subtitle={t('salesSubtitle')}
-        actions={
-          <button onClick={() => { setShowBarcodeScanner(true); setError(null) }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
-            <Scan size={18} />
-          </button>
-        }
-      />
-
       <div style={{ marginBottom: 16 }}>
         <div style={{
           display: 'flex',
@@ -600,21 +588,17 @@ export default function SalesPage() {
         </div>
       )}
 
-      {/* Camera Barcode Scanner */}
+      {/* Camera Barcode Scanner — autoConfirm: every valid scan is applied
+          immediately (no "tap to accept" step) so the cashier can scan a
+          whole basket in one continuous pass; a barcode with no matching
+          product is rejected inline (red flash) and never added. */}
       <BarcodeScannerModal
         open={showBarcodeScanner}
         onClose={() => setShowBarcodeScanner(false)}
-        onBarcodeDetected={(code) => {
-          const err = addBarcodeProduct(code)
-          if (err) {
-            setShowBarcodeScanner(false)
-            setBarcodeInput(code)
-            setBarcodeError(err)
-            setShowBarcode(true)
-          }
-        }}
+        onBarcodeDetected={(code) => addBarcodeProduct(code)}
         onManualInput={() => { setShowBarcodeScanner(false); setShowBarcode(true); setBarcodeError('') }}
-        closeOnDetect={false}
+        autoConfirm
+        cartCount={totalPieces}
       />
 
       <div style={{

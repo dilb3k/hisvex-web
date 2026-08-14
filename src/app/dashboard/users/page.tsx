@@ -281,10 +281,7 @@ export default function UsersPage() {
               <Users size={28} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: -0.3 }}>
-                {t('usersTitle')}
-              </h2>
-              <p style={{ fontSize: 13, color: 'rgba(216,180,254,0.75)', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 13, color: 'rgba(216,180,254,0.75)', margin: 0 }}>
                 {t('usersSubtitle')}
               </p>
             </div>
