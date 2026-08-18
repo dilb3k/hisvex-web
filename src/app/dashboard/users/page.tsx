@@ -10,8 +10,14 @@ import {
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { formatPhone, displayPhone } from '@/lib/formatters'
+import { ErrorBanner } from '@/components/StatusViews'
 import type { User } from '@/lib/types'
 
+// Kept as raw hex (not CSS vars) deliberately: these feed the `${color}1A`/`${color}33`
+// alpha-suffix string concatenation below (translucent badge backgrounds/borders), which
+// only works with hex literals, not var(...) references. They're brand/tier identity
+// colors (not app status colors), consistent with the same hex values used for the same
+// tiers in settings.tsx's tier styling.
 const TIER_OPTIONS: { key: User['tier']; labelKey: string; color: string; icon: 'free' | 'bor' | 'pro' }[] = [
   { key: 'tekin', labelKey: 'planFree', color: 'var(--color-text-secondary)', icon: 'free' },
   { key: 'bor', labelKey: 'planBor', color: '#10B981', icon: 'bor' },
@@ -148,6 +154,7 @@ export default function UsersPage() {
   const showToast = useAppStore((s) => s.showToast)
   const [admins, setAdmins] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [tierFilter, setTierFilter] = useState<User['tier'] | 'all'>('all')
@@ -163,10 +170,16 @@ export default function UsersPage() {
       return
     }
     if (!silent) setLoading(true)
+    setLoadError(false)
     try {
       const { data } = await adminsApi.getAll()
       setAdmins(data)
     } catch (err) {
+      // Genuine load failure gets a persistent, retryable banner (same
+      // convention as products/inventory/sales/debtors) instead of only a
+      // transient toast — otherwise a failed load looked identical to a
+      // genuinely-empty admin list.
+      setLoadError(true)
       showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setLoading(false)
@@ -436,6 +449,8 @@ export default function UsersPage() {
           <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('loading_data')}</span>
         </div>
+      ) : loadError ? (
+        <ErrorBanner onRetry={() => loadAdmins()} />
       ) : filtered.length === 0 ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -785,12 +800,13 @@ function AdminFormModal({
               {isEdit ? t('editAdmin') : t('createAdmin')}
             </h3>
           </div>
-          <button onClick={onClose} style={{
-            width: 34, height: 34, borderRadius: 9,
-            border: 'none', background: 'transparent',
-            color: 'var(--color-text-secondary)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+          <button
+            onClick={onClose}
+            className="icon-ghost-btn"
+            title={t('close')}
+            aria-label={t('close')}
+            style={{ width: 34, height: 34, borderRadius: 9 }}
+          >
             <X size={20} />
           </button>
         </div>
@@ -892,12 +908,18 @@ function AdminFormModal({
           background: 'var(--color-surface)',
           display: 'flex', gap: 10,
         }}>
-          <button onClick={onClose} style={{
-            flex: 1, padding: '12px 0', borderRadius: 10,
-            border: '1.5px solid var(--color-border)',
-            background: 'transparent', color: 'var(--color-text)',
-            fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: '12px 0', borderRadius: 10,
+              border: '1.5px solid var(--color-border)',
+              background: 'transparent', color: 'var(--color-text)',
+              fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
             {t('cancel')}
           </button>
           <button
@@ -906,13 +928,15 @@ function AdminFormModal({
             style={{
               flex: 1, padding: '12px 0', borderRadius: 10,
               border: 'none',
-              background: saving || !username.trim() || (!isEdit && password.length < 6)
-                ? 'var(--color-primary)' : 'var(--color-primary)',
+              background: 'var(--color-primary)',
               opacity: saving || !username.trim() || (!isEdit && password.length < 6) ? 0.55 : 1,
               color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'background 0.15s',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-primary-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-primary)' }}
           >
             {saving && (
               <span style={{
@@ -994,12 +1018,19 @@ function DeleteConfirmModal({
           {t('deleteUserConfirm', { username: admin.username })}
         </p>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} disabled={deleting} style={{
-            flex: 1, padding: '12px 0', borderRadius: 10,
-            border: '1.5px solid var(--color-border)',
-            background: 'transparent', color: 'var(--color-text)',
-            fontSize: 14, fontWeight: 600, cursor: deleting ? 'not-allowed' : 'pointer',
-          }}>
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            style={{
+              flex: 1, padding: '12px 0', borderRadius: 10,
+              border: '1.5px solid var(--color-border)',
+              background: 'transparent', color: 'var(--color-text)',
+              fontSize: 14, fontWeight: 600, cursor: deleting ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => { if (!deleting) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
             {t('cancel')}
           </button>
           <button
@@ -1013,7 +1044,10 @@ function DeleteConfirmModal({
               cursor: deleting ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               boxShadow: '0 4px 14px rgba(239,68,68,0.3)',
+              transition: 'filter 0.15s',
             }}
+            onMouseEnter={(e) => { if (!deleting) e.currentTarget.style.filter = 'brightness(1.08)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
           >
             {deleting && (
               <span style={{

@@ -625,17 +625,15 @@ export default function StatisticsPage() {
           <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>{periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={handleDownload} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 10,
-            border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-            color: 'var(--color-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            transition: 'all 0.15s', whiteSpace: 'nowrap',
-          }}><Download size={16} />{t('downloadStatistics')}</button>
-          <button onClick={handleOpenAllTime} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 10,
-            border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            transition: 'opacity 0.15s', whiteSpace: 'nowrap',
-          }}><CalendarClock size={16} />{t('allTimeStatistics')}</button>
+          <button
+            onClick={handleDownload}
+            disabled={!inventoryItems.length}
+            className="btn btn-secondary"
+            style={{ whiteSpace: 'nowrap' }}
+          ><Download size={16} />{t('downloadStatistics')}</button>
+          <button onClick={handleOpenAllTime} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+            <CalendarClock size={16} />{t('allTimeStatistics')}
+          </button>
         </div>
       </div>
 
@@ -811,20 +809,24 @@ export default function StatisticsPage() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('allTimeStatisticsTitle')}</h3>
-              <button onClick={() => setShowAllTime(false)} style={{
-                width: 32, height: 32, borderRadius: 8, border: 'none',
-                background: 'transparent', color: 'var(--color-text-secondary)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}><X size={18} /></button>
+              <button
+                onClick={() => setShowAllTime(false)}
+                className="icon-ghost-btn"
+                title={t('close')}
+                aria-label={t('close')}
+                style={{ width: 32, height: 32, borderRadius: 8 }}
+              ><X size={18} /></button>
             </div>
             <div style={{ display: 'flex', gap: 10, padding: 20, flexWrap: 'wrap' }}>
               <RangeDateButton label={t('rangeFrom')} value={allTimeFrom} onChange={setAllTimeFrom} />
               <RangeDateButton label={t('rangeTo')} value={allTimeTo} onChange={setAllTimeTo} />
             </div>
-            <button onClick={() => fetchAllTime(allTimeFrom, allTimeTo)} disabled={allTimeLoading} style={{
-              display: 'block', margin: '0 20px 12px', padding: '12px 0', borderRadius: 8, border: 'none',
-              background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: allTimeLoading ? 'not-allowed' : 'pointer', width: 'calc(100% - 40px)',
-            }}>{allTimeLoading ? t('loading_data') : t('applyRange')}</button>
+            <button
+              onClick={() => fetchAllTime(allTimeFrom, allTimeTo)}
+              disabled={allTimeLoading}
+              className="btn btn-primary"
+              style={{ margin: '0 20px 12px', width: 'calc(100% - 40px)' }}
+            >{allTimeLoading ? t('loading_data') : t('applyRange')}</button>
             {allTimeLoading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
                 <div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />

@@ -262,13 +262,10 @@ export default function SalesPage() {
           {search && (
             <button
               onClick={() => setSearch('')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-text-secondary)',
-                cursor: 'pointer',
-                padding: 2,
-              }}
+              className="icon-ghost-btn"
+              title="Qidiruvni tozalash"
+              aria-label="Qidiruvni tozalash"
+              style={{ borderRadius: 6, padding: 4 }}
             >
               <X size={16} />
             </button>
@@ -402,6 +399,8 @@ export default function SalesPage() {
                       <button
                         onClick={() => handleRemove(item.productId)}
                         disabled={cartQty === 0}
+                        title="Kamaytirish"
+                        aria-label="Kamaytirish"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -414,6 +413,7 @@ export default function SalesPage() {
                           color: cartQty > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           cursor: cartQty === 0 ? 'not-allowed' : 'pointer',
                           opacity: cartQty === 0 ? 0.5 : 1,
+                          transition: 'all 0.15s',
                         }}
                       >
                         <Minus size={18} />
@@ -437,6 +437,8 @@ export default function SalesPage() {
                           cursor/opacity so it still reads as disabled. */}
                       <button
                         onClick={() => handleAdd(item.productId, item.currentQuantity)}
+                        title="Ko'paytirish"
+                        aria-label="Ko'paytirish"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -449,6 +451,7 @@ export default function SalesPage() {
                           color: cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           cursor: cartQty >= item.currentQuantity ? 'not-allowed' : 'pointer',
                           opacity: cartQty >= item.currentQuantity ? 0.5 : 1,
+                          transition: 'all 0.15s',
                         }}
                       >
                         <Plus size={18} />
@@ -477,18 +480,8 @@ export default function SalesPage() {
                           onClick={() => clearLine(item.productId)}
                           title={t('clearLine')}
                           aria-label={t('clearLine')}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 26,
-                            height: 26,
-                            borderRadius: 7,
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--color-text-secondary)',
-                            cursor: 'pointer',
-                          }}
+                          className="icon-ghost-btn"
+                          style={{ width: 26, height: 26, borderRadius: 7 }}
                         >
                           <Trash2 size={15} />
                         </button>
@@ -552,34 +545,13 @@ export default function SalesPage() {
               </p>
             )}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleBarcodeSubmit}
-                style={{
-                  flex: 1,
-                  padding: '10px 0',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: 'var(--color-primary)',
-                  color: '#fff',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
+              <button onClick={handleBarcodeSubmit} className="btn btn-primary" style={{ flex: 1 }}>
                 {t('confirm')}
               </button>
               <button
                 onClick={() => { setShowBarcode(false); setBarcodeInput('') }}
-                style={{
-                  flex: 1,
-                  padding: '10px 0',
-                  borderRadius: 8,
-                  border: '1px solid var(--color-border)',
-                  background: 'transparent',
-                  color: 'var(--color-text)',
-                  fontSize: 14,
-                  cursor: 'pointer',
-                }}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
               >
                 {t('cancel')}
               </button>
@@ -655,41 +627,16 @@ export default function SalesPage() {
           <button
             onClick={clearCart}
             disabled={totalPieces === 0}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--color-border)',
-              background: 'transparent',
-              color: 'var(--color-text)',
-              fontSize: 13,
-              cursor: totalPieces === 0 ? 'not-allowed' : 'pointer',
-              opacity: totalPieces === 0 ? 0.5 : 1,
-              flex: 1,
-            }}
+            className="btn btn-secondary"
+            style={{ gap: 6, flex: 1 }}
           >
             <X size={16} />
             {t('cancel')}
           </button>
           <button
             onClick={() => { setShowBarcodeScanner(true); setError(null) }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--color-border)',
-              background: 'transparent',
-              color: 'var(--color-text)',
-              fontSize: 13,
-              cursor: 'pointer',
-              flex: 1,
-            }}
+            className="btn btn-secondary"
+            style={{ gap: 6, flex: 1 }}
           >
             <Scan size={16} />
             {t('barcode')}
@@ -697,21 +644,8 @@ export default function SalesPage() {
           <button
             onClick={handleConfirmSale}
             disabled={totalPieces === 0 || submitting}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: 'none',
-              background: totalPieces === 0 || submitting ? 'var(--color-border)' : 'var(--color-primary)',
-              color: totalPieces === 0 || submitting ? 'var(--color-text-secondary)' : '#fff',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: totalPieces === 0 || submitting ? 'not-allowed' : 'pointer',
-              flex: 1.5,
-            }}
+            className="btn btn-primary"
+            style={{ gap: 6, flex: 1.5 }}
           >
             {submitting ? t('loading') : t('confirmSale')}
           </button>

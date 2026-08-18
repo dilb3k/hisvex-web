@@ -39,7 +39,7 @@ function getStockStatus(remaining: number) {
 const s: Record<string, React.CSSProperties> = {
   title: { fontSize: 20, fontWeight: 700 },
   dateNav: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, justifyContent: 'center' },
-  dateNavBtn: { width: 34, height: 34, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+  dateNavBtn: { width: 34, height: 34, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s, border-color 0.15s' },
   dateDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', userSelect: 'none', padding: '4px 16px' },
   dateText: { fontSize: 15, fontWeight: 700, color: 'var(--color-text)', lineHeight: '20px' },
   weekdayText: { fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: '16px' },
@@ -240,7 +240,14 @@ export default function InventoryPage() {
 
   const renderDateNav = () => (
     <div style={s.dateNav}>
-      <button onClick={goToPrevDay} style={s.dateNavBtn}><ChevronLeft size={18} /></button>
+      <button
+        onClick={goToPrevDay}
+        style={s.dateNavBtn}
+        title="Oldingi kun"
+        aria-label="Oldingi kun"
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
+      ><ChevronLeft size={18} /></button>
       <label style={s.dateDisplay}>
         <input
           type="date"
@@ -250,7 +257,14 @@ export default function InventoryPage() {
         />
         <span style={s.weekdayText}>{dayjs(selectedDate).format('dddd')}</span>
       </label>
-      <button onClick={goToNextDay} style={s.dateNavBtn}><ChevronRight size={18} /></button>
+      <button
+        onClick={goToNextDay}
+        style={s.dateNavBtn}
+        title="Keyingi kun"
+        aria-label="Keyingi kun"
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
+      ><ChevronRight size={18} /></button>
     </div>
   )
 
@@ -293,7 +307,7 @@ export default function InventoryPage() {
   const renderCard = (entry: EnrichedItem) => {
     const status = getStockStatus(entry.remaining)
     return (
-      <div style={s.card} onClick={() => openModal(entry)}>
+      <div style={s.card} className="list-row-hover" onClick={() => openModal(entry)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
           <div style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
             {(entry.product.image || entry.product.imageHash) ? (
@@ -400,7 +414,8 @@ export default function InventoryPage() {
       <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
       <input
         type="text" placeholder={t('search')} value={search} onChange={(e) => setSearch(e.target.value)}
-        style={{ width: '100%', padding: '9px 14px 9px 36px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 13, outline: 'none' }}
+        className="search-input"
+        style={{ paddingLeft: 36 }}
       />
     </div>
   )
@@ -420,9 +435,9 @@ export default function InventoryPage() {
           {renderKpiRow()}
           {renderSearch()}
           {filteredItems.length === 0 && (
-            <div style={s.emptyWrap}>
-              <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-              <p style={{ fontSize: 15, fontWeight: 500 }}>{isSearchMiss ? t('noProductsFound') : isCatalogEmpty ? t('addProductsFirst') : t('noInventory')}</p>
+            <div className="empty-state">
+              <div className="empty-state-icon"><Package size={24} /></div>
+              <p className="empty-state-title">{isSearchMiss ? t('noProductsFound') : isCatalogEmpty ? t('addProductsFirst') : t('noInventory')}</p>
             </div>
           )}
           {filteredItems.map((entry, idx) => {
@@ -439,10 +454,10 @@ export default function InventoryPage() {
     return (
       <div>
         {renderDateNav()}
-        <div style={s.emptyWrap}>
-          <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-          <p style={{ fontSize: 15, fontWeight: 500 }}>{t('futureDateNotice')}</p>
-          <p style={{ fontSize: 13, marginTop: 4 }}>{t('futureDateNoticeText')}</p>
+        <div className="empty-state">
+          <div className="empty-state-icon"><Package size={24} /></div>
+          <p className="empty-state-title">{t('futureDateNotice')}</p>
+          <p className="empty-state-text">{t('futureDateNoticeText')}</p>
         </div>
       </div>
     )

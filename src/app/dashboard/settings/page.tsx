@@ -368,14 +368,21 @@ export default function SettingsPage() {
             onClick={() => setShowTariffs(true)}
             style={{
               ...cardStyle,
-              borderColor: `${getTierColor(userTier)}40`,
+              // Real fix: `${var(...)}}40` is not a valid CSS color (alpha-suffix
+              // hex trick doesn't work on a var() reference) — it silently failed
+              // to apply, leaving the border on the plain neutral color instead of
+              // a tier-tinted one. color-mix() works with any valid CSS color.
+              borderColor: `color-mix(in srgb, ${getTierColor(userTier)} 40%, transparent)`,
               background: userTier === 'pro'
                 ? 'var(--color-primary-soft)'
                 : userTier === 'bor'
                   ? 'rgba(34,197,94,0.06)'
                   : 'var(--color-surface)',
               cursor: 'pointer',
+              transition: 'filter 0.15s',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.08)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{
@@ -511,6 +518,8 @@ export default function SettingsPage() {
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,
                 }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
               >
                 {lang.label}
               </button>
@@ -540,6 +549,8 @@ export default function SettingsPage() {
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,
                 }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
               >
                 <Icon size={18} />
                 {item.code === 'light' ? t('light') : t('dark')}
@@ -565,7 +576,10 @@ export default function SettingsPage() {
             width: '100%',
             cursor: 'pointer',
             textAlign: 'left',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
         >
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>{t('businessDayHour')}</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -642,11 +656,13 @@ export default function SettingsPage() {
               padding: '16px 20px', borderBottom: '1px solid var(--color-border)',
             }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('subscriptionDetails')}</h3>
-              <button onClick={() => setShowTariffs(false)} style={{
-                width: 32, height: 32, borderRadius: 8, border: 'none',
-                background: 'transparent', color: 'var(--color-text-secondary)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}><X size={20} /></button>
+              <button
+                onClick={() => setShowTariffs(false)}
+                className="icon-ghost-btn"
+                title={t('close')}
+                aria-label={t('close')}
+                style={{ width: 32, height: 32, borderRadius: 8 }}
+              ><X size={20} /></button>
             </div>
 
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -663,7 +679,7 @@ export default function SettingsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{
                       fontSize: 15, fontWeight: 700,
-                      color: userTier === 'pro' ? '#7C3AED' : userTier === 'bor' ? '#10B981' : 'var(--color-text-secondary)',
+                      color: getTierColor(userTier),
                     }}>
                       {userTier === 'pro' ? t('planPro') : userTier === 'bor' ? t('planBor') : t('planFree')}
                     </span>
@@ -782,7 +798,10 @@ export default function SettingsPage() {
             width: '100%',
             cursor: 'pointer',
             textAlign: 'left',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
         >
           <div style={{
             width: 40, height: 40, borderRadius: 10,
@@ -842,18 +861,10 @@ export default function SettingsPage() {
               </h3>
               <button
                 onClick={() => setShowBusinessDay(false)}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--color-text-secondary)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+                className="icon-ghost-btn"
+                title={t('close')}
+                aria-label={t('close')}
+                style={{ width: 32, height: 32, borderRadius: 8 }}
               >
                 <X size={20} />
               </button>
@@ -919,7 +930,10 @@ export default function SettingsPage() {
                         fontWeight: selected ? 700 : 500,
                         fontVariantNumeric: 'tabular-nums',
                         cursor: 'pointer',
+                        transition: 'background 0.15s, border-color 0.15s',
                       }}
+                      onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                      onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
                     >
                       {String(h).padStart(2, '0')}
                     </button>
@@ -944,17 +958,8 @@ export default function SettingsPage() {
 
               <button
                 onClick={handleSaveBusinessDay}
-                style={{
-                  width: '100%',
-                  padding: '12px 0',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: 'var(--color-primary)',
-                  color: '#fff',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '12px 0' }}
               >
                 {t('save')}
               </button>
@@ -988,11 +993,13 @@ export default function SettingsPage() {
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>{t('blockCode')}</h3>
               </div>
-              <button onClick={() => setShowBlockModal(false)} style={{
-                width: 32, height: 32, borderRadius: 8, border: 'none',
-                background: 'transparent', color: 'var(--color-text-secondary)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}><X size={20} /></button>
+              <button
+                onClick={() => setShowBlockModal(false)}
+                className="icon-ghost-btn"
+                title={t('close')}
+                aria-label={t('close')}
+                style={{ width: 32, height: 32, borderRadius: 8 }}
+              ><X size={20} /></button>
             </div>
 
             <div style={{ padding: '32px 24px 24px', textAlign: 'center' }}>
@@ -1065,7 +1072,10 @@ export default function SettingsPage() {
                     width: '100%', padding: '13px 0', borderRadius: 10, marginBottom: 10,
                     border: '1px solid var(--color-warning)', background: 'transparent',
                     color: 'var(--color-warning)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                    transition: 'background 0.15s',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-warning-soft)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                 >
                   {blockDisabled ? t('blockCodeTemporaryOn') : t('blockCodeTemporaryOff')}
                 </button>
@@ -1082,7 +1092,10 @@ export default function SettingsPage() {
                       color: 'var(--color-danger)', fontSize: 14, fontWeight: 600,
                       cursor: isBlockBusy ? 'not-allowed' : 'pointer',
                       opacity: isBlockBusy ? 0.6 : 1,
+                      transition: 'background 0.15s',
                     }}
+                    onMouseEnter={(e) => { if (!isBlockBusy) e.currentTarget.style.background = 'var(--color-danger-soft)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   >
                     {t('blockCodeRemove')}
                   </button>
@@ -1094,12 +1107,9 @@ export default function SettingsPage() {
                     handleStepAction(pinStep, nextInputs)
                   }}
                   disabled={curPin.length !== 4 || isBlockBusy}
+                  className="btn btn-primary"
                   style={{
-                    flex: 1, padding: '13px 0', borderRadius: 10, border: 'none',
-                    background: 'var(--color-primary)', color: '#fff',
-                    fontSize: 14, fontWeight: 600,
-                    cursor: curPin.length === 4 && !isBlockBusy ? 'pointer' : 'not-allowed',
-                    opacity: curPin.length === 4 && !isBlockBusy ? 1 : 0.5,
+                    flex: 1, padding: '13px 0',
                   }}
                 >
                   {isLastStep ? t('save') : t('blockNext')}

@@ -654,3 +654,75 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
+
+/* ============================================================
+   ICON / UTILITY BUTTONS — small reusable hover treatments for
+   ad-hoc icon buttons (modal close "×", chip remove, list rows)
+   that set their own size inline but want consistent hover polish.
+   ============================================================ */
+
+.icon-ghost-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-ghost-btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.icon-ghost-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.round-add-btn {
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.15s, transform 0.15s;
+}
+
+.round-add-btn:hover { filter: brightness(1.12); }
+.round-add-btn:active { transform: scale(0.92); }
+
+.chip-remove-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  color: var(--color-text-tertiary);
+  transition: color 0.15s;
+}
+
+.chip-remove-btn:hover { color: var(--color-danger); }
+
+.list-row-hover {
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.list-row-hover:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-border-light);
+}
+
+.notfound-cta {
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+
+.notfound-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(124,58,237,0.45);
+}
+
+.notfound-cta:active {
+  transform: translateY(0);
+}

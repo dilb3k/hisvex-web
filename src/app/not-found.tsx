@@ -17,7 +17,7 @@ export default function NotFound() {
         <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.5)', marginBottom: 32 }}>
           Sahifa topilmadi
         </p>
-        <Link href="/" style={{
+        <Link href="/" className="notfound-cta" style={{
           display: 'inline-flex', alignItems: 'center', gap: 8,
           padding: '14px 28px', borderRadius: 12,
           background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { debtorsApi, clearApiCache } from '@/lib/api'
 import { useAuthStore } from '@/lib/authStore'
-import { Plus, Minus, UserPlus, History, Pencil, Trash2, Search, Lock, UsersRound, Wallet, AlertTriangle } from 'lucide-react'
+import { Plus, Minus, UserPlus, History, Pencil, Trash2, Search, Lock, UsersRound, Wallet, AlertTriangle, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
@@ -19,9 +19,6 @@ import {
   inputBase,
   label,
   errorText,
-  btnPrimary,
-  btnSecondary,
-  btnDanger,
   formatMoney,
   kpiCard,
   kpiIcon,
@@ -38,15 +35,6 @@ const modalCloseBtnStyle: React.CSSProperties = {
   width: 34,
   height: 34,
   borderRadius: 8,
-  border: 'none',
-  background: 'transparent',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  color: 'var(--color-text-secondary)',
-  fontSize: 20,
-  lineHeight: 1,
 }
 
 const headerIconBtnStyle: React.CSSProperties = {
@@ -61,6 +49,7 @@ const headerIconBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
   color: 'var(--color-text)',
   flexShrink: 0,
+  transition: 'background 0.15s, color 0.15s',
 }
 
 // item 1 — content-shaped skeleton (KPI card + search bar + debtor rows)
@@ -451,6 +440,7 @@ export default function DebtorsPage() {
                 <div
                   key={debtor._id}
                   onClick={() => handleCardClick(debtor)}
+                  className="list-row-hover"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -461,7 +451,6 @@ export default function DebtorsPage() {
                     border: '1px solid var(--color-border)',
                     cursor: 'pointer',
                     marginBottom: 8,
-                    transition: 'box-shadow 0.15s',
                   }}
                 >
                   <div style={{
@@ -516,7 +505,13 @@ export default function DebtorsPage() {
           <div style={modalContainer} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeader}>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{t('addDebtor')}</span>
-              <button onClick={() => setShowAddModal(false)} style={modalCloseBtnStyle}>&times;</button>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="icon-ghost-btn"
+                style={modalCloseBtnStyle}
+                title={t('close')}
+                aria-label={t('close')}
+              ><X size={18} /></button>
             </div>
             <div style={modalBody}>
               <div style={{ marginBottom: 14 }}>
@@ -561,11 +556,11 @@ export default function DebtorsPage() {
               </div>
             </div>
             <div style={modalFooter}>
-              <button onClick={() => setShowAddModal(false)} style={btnSecondary}>{t('cancel')}</button>
+              <button onClick={() => setShowAddModal(false)} className="btn btn-secondary">{t('cancel')}</button>
               <button
                 onClick={handleAddSave}
                 disabled={saving}
-                style={{ ...btnPrimary, opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+                className="btn btn-primary"
               >
                 {saving ? t('loading') : t('save')}
               </button>
@@ -581,13 +576,33 @@ export default function DebtorsPage() {
             <div style={modalHeader}>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{t('adjustDebt')}</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={handleEditFromDetail} style={headerIconBtnStyle} title={t('edit')}>
+                <button
+                  onClick={handleEditFromDetail}
+                  style={headerIconBtnStyle}
+                  title={t('edit')}
+                  aria-label={t('edit')}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg)' }}
+                >
                   <Pencil size={16} />
                 </button>
-                <button onClick={handleDeleteFromDetail} style={{ ...headerIconBtnStyle, color: 'var(--color-danger)' }} title={t('delete')}>
+                <button
+                  onClick={handleDeleteFromDetail}
+                  style={{ ...headerIconBtnStyle, color: 'var(--color-danger)' }}
+                  title={t('delete')}
+                  aria-label={t('delete')}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-danger-soft)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg)' }}
+                >
                   <Trash2 size={16} />
                 </button>
-                <button onClick={() => { setShowDetailModal(false); setSelectedDebtor(null) }} style={modalCloseBtnStyle}>&times;</button>
+                <button
+                  onClick={() => { setShowDetailModal(false); setSelectedDebtor(null) }}
+                  className="icon-ghost-btn"
+                  style={modalCloseBtnStyle}
+                  title={t('close')}
+                  aria-label={t('close')}
+                ><X size={18} /></button>
               </div>
             </div>
 
@@ -747,7 +762,10 @@ export default function DebtorsPage() {
                     opacity: saving ? 0.6 : 1,
                     cursor: saving ? 'not-allowed' : 'pointer',
                     whiteSpace: 'nowrap',
+                    transition: 'filter 0.15s',
                   }}
+                  onMouseEnter={(e) => { if (!saving) e.currentTarget.style.filter = 'brightness(1.08)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
                 >
                   <Plus size={14} />
                   {t('addToDebt')}
@@ -767,7 +785,10 @@ export default function DebtorsPage() {
                     opacity: saving ? 0.6 : 1,
                     cursor: saving ? 'not-allowed' : 'pointer',
                     whiteSpace: 'nowrap',
+                    transition: 'filter 0.15s',
                   }}
+                  onMouseEnter={(e) => { if (!saving) e.currentTarget.style.filter = 'brightness(1.08)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
                 >
                   <Minus size={14} />
                   {t('subtractFromDebt')}
@@ -784,7 +805,13 @@ export default function DebtorsPage() {
           <div style={modalContainer} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeader}>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{t('editDebtor')}</span>
-              <button onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }} style={modalCloseBtnStyle}>&times;</button>
+              <button
+                onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }}
+                className="icon-ghost-btn"
+                style={modalCloseBtnStyle}
+                title={t('close')}
+                aria-label={t('close')}
+              ><X size={18} /></button>
             </div>
             <div style={modalBody}>
               <div style={{ marginBottom: 14 }}>
@@ -823,11 +850,11 @@ export default function DebtorsPage() {
               </div>
             </div>
             <div style={modalFooter}>
-              <button onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }} style={btnSecondary}>{t('cancel')}</button>
+              <button onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }} className="btn btn-secondary">{t('cancel')}</button>
               <button
                 onClick={handleEditSave}
                 disabled={saving}
-                style={{ ...btnPrimary, opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+                className="btn btn-primary"
               >
                 {saving ? t('loading') : t('save')}
               </button>
@@ -869,19 +896,15 @@ export default function DebtorsPage() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button
                 onClick={() => { setShowDeleteConfirm(false); setSelectedDebtor(null) }}
-                style={btnSecondary}
+                className="btn btn-secondary"
               >
                 {t('cancel')}
               </button>
               <button
                 onClick={handleDeleteConfirm}
                 disabled={saving}
-                style={{
-                  ...btnDanger,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1,
-                  opacity: saving ? 0.6 : 1,
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                }}
+                className="btn btn-danger"
+                style={{ gap: 6 }}
               >
                 {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {saving ? t('loading') : t('delete')}
@@ -950,15 +973,12 @@ export default function DebtorsPage() {
               <div style={{ minHeight: 18, marginBottom: 16 }} />
             )}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowPinVerify(false)} style={btnSecondary}>Bekor qilish</button>
+              <button onClick={() => setShowPinVerify(false)} className="btn btn-secondary">Bekor qilish</button>
               <button
                 onClick={() => confirmPin(pinInput)}
                 disabled={pinInput.length !== 4}
-                style={{
-                  ...btnPrimary, flex: 1,
-                  opacity: pinInput.length === 4 ? 1 : 0.5,
-                  cursor: pinInput.length === 4 ? 'pointer' : 'not-allowed',
-                }}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
               >
                 Tasdiqlash
               </button>

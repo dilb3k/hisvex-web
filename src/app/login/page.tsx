@@ -268,7 +268,10 @@ export default function LoginPage() {
                   fontSize: 15, fontWeight: 700,
                   cursor: loading ? 'not-allowed' : 'pointer',
                   opacity: loading ? 0.7 : 1, marginTop: 4,
+                  transition: 'background 0.15s',
                 }}
+                onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = '#6D28D9' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = C.primary }}
               >{loading ? t('loading') : t('verifyPhone')}</button>
 
               <button
@@ -430,7 +433,10 @@ export default function LoginPage() {
                     fontSize: 15, fontWeight: 700,
                     cursor: loading ? 'not-allowed' : 'pointer',
                     opacity: loading ? 0.7 : 1, marginTop: 4,
+                    transition: 'background 0.15s',
                   }}
+                  onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = '#6D28D9' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = C.primary }}
                 >{loading ? t('loading') : isLoginMode ? t('signIn') : t('signUp')}</button>
               </form>
             </>

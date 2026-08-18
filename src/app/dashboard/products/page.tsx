@@ -21,9 +21,6 @@ import {
   inputBase,
   label,
   errorText,
-  btnPrimary,
-  btnSecondary,
-  btnDanger,
   formatMoney,
   formatInputAmount,
   parseFormattedAmount,
@@ -543,16 +540,9 @@ export default function ProductsPage() {
           </div>
 
           {sortedProducts.length === 0 ? (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 80,
-          color: 'var(--color-text-secondary)',
-        }}>
-          <Package size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
-          <p style={{ fontSize: 15, fontWeight: 500 }}>{debouncedSearch ? t('noProductsFound') : t('noProducts')}</p>
+        <div className="empty-state">
+          <div className="empty-state-icon"><Package size={24} /></div>
+          <p className="empty-state-title">{debouncedSearch ? t('noProductsFound') : t('noProducts')}</p>
           {!debouncedSearch && (
             <button
               onClick={openCreate}
@@ -648,39 +638,22 @@ export default function ProductsPage() {
                 {editingProduct && (
                   <button
                     onClick={() => { setDeleteTarget(editingProduct); setShowDeleteModal(true) }}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 8,
-                      border: 'none',
-                      background: 'var(--color-danger)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
+                    className="btn btn-danger btn-icon"
+                    title={t('delete')}
+                    aria-label={t('delete')}
+                    style={{ width: 34, height: 34 }}
                   >
                     <Trash2 size={16} color="#fff" />
                   </button>
                 )}
                 <button
                   onClick={closeProductModal}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 8,
-                    border: 'none',
-                    background: 'transparent',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-secondary)',
-                    fontSize: 20,
-                    lineHeight: 1,
-                  }}
+                  className="icon-ghost-btn"
+                  title={t('close')}
+                  aria-label={t('close')}
+                  style={{ width: 34, height: 34, borderRadius: 8 }}
                 >
-                  &times;
+                  <X size={18} />
                 </button>
               </div>
             </div>
@@ -833,16 +806,14 @@ export default function ProductsPage() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Shtrixkodlar</span>
                   <button
                     onClick={handleAddBarcode}
+                    className="round-add-btn"
+                    title="Shtrixkod qo'shish"
+                    aria-label="Shtrixkod qo'shish"
                     style={{
                       width: 24,
                       height: 24,
                       borderRadius: '50%',
-                      border: 'none',
                       background: 'var(--color-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
                       marginLeft: 'auto',
                       flexShrink: 0,
                     }}
@@ -864,9 +835,12 @@ export default function ProductsPage() {
                         fontSize: 12,
                       }}>
                         <span style={{ color: 'var(--color-text)' }}>{code}</span>
-                        <button onClick={() => handleRemoveBarcode(i)} style={{
-                          border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: 'var(--color-text-tertiary)',
-                        }}>
+                        <button
+                          onClick={() => handleRemoveBarcode(i)}
+                          className="chip-remove-btn"
+                          title="O'chirish"
+                          aria-label={`${code} shtrixkodini o'chirish`}
+                        >
                           <X size={12} />
                         </button>
                       </div>
@@ -883,11 +857,12 @@ export default function ProductsPage() {
             </div>
 
             <div style={modalFooter}>
-              <button onClick={closeProductModal} style={btnSecondary}>{t('cancel')}</button>
+              <button onClick={closeProductModal} className="btn btn-secondary">{t('cancel')}</button>
               <button
                 onClick={handleSave}
                 disabled={isSubmitting}
-                style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
+                className="btn btn-primary"
+                style={{ gap: 6 }}
               >
                 {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isSubmitting ? t('loading') : t('save')}
@@ -929,8 +904,8 @@ export default function ProductsPage() {
               autoFocus
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setShowBarcodeInput(false)} style={btnSecondary}>{t('cancel')}</button>
-              <button onClick={handleConfirmBarcode} style={btnPrimary}>Qo'shish</button>
+              <button onClick={() => setShowBarcodeInput(false)} className="btn btn-secondary">{t('cancel')}</button>
+              <button onClick={handleConfirmBarcode} className="btn btn-primary">Qo'shish</button>
             </div>
           </div>
         </div>
@@ -942,11 +917,13 @@ export default function ProductsPage() {
           <div style={{ ...modalContainer, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeader}>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{t('restock')}</span>
-              <button onClick={closeRestockModal} style={{
-                width: 34, height: 34, borderRadius: 8, border: 'none', background: 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                color: 'var(--color-text-secondary)', fontSize: 20, lineHeight: 1,
-              }}>&times;</button>
+              <button
+                onClick={closeRestockModal}
+                className="icon-ghost-btn"
+                title={t('close')}
+                aria-label={t('close')}
+                style={{ width: 34, height: 34, borderRadius: 8 }}
+              ><X size={18} /></button>
             </div>
             <div style={modalBody}>
               <div style={{
@@ -1021,7 +998,7 @@ export default function ProductsPage() {
               )}
             </div>
             <div style={modalFooter}>
-              <button onClick={closeRestockModal} style={btnSecondary}>{t('back')}</button>
+              <button onClick={closeRestockModal} className="btn btn-secondary">{t('back')}</button>
               <button
                 onClick={handleRestock}
                 disabled={!restockQty || isRestocking}
@@ -1035,7 +1012,10 @@ export default function ProductsPage() {
                   fontWeight: 600,
                   cursor: (!restockQty || isRestocking) ? 'not-allowed' : 'pointer',
                   opacity: (!restockQty || isRestocking) ? 0.6 : 1,
+                  transition: 'filter 0.15s',
                 }}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.filter = 'brightness(1.08)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
               >
                 {isRestocking ? t('loading') : t('addStock')}
               </button>
@@ -1062,11 +1042,12 @@ export default function ProductsPage() {
             </div>
             <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>{t('deleteMessage')}</div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null) }} style={btnSecondary}>{t('cancel')}</button>
+              <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null) }} className="btn btn-secondary">{t('cancel')}</button>
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                style={{ ...btnDanger, opacity: isDeleting ? 0.6 : 1, cursor: isDeleting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
+                className="btn btn-danger"
+                style={{ gap: 6 }}
               >
                 {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isDeleting ? t('loading') : t('delete')}
@@ -1135,15 +1116,12 @@ export default function ProductsPage() {
               <div style={{ minHeight: 18, marginBottom: 16 }} />
             )}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setShowPinVerify(false); setPinAction(null) }} style={btnSecondary}>Bekor qilish</button>
+              <button onClick={() => { setShowPinVerify(false); setPinAction(null) }} className="btn btn-secondary">Bekor qilish</button>
               <button
                 onClick={() => confirmPin(pinInput)}
                 disabled={pinInput.length !== 4}
-                style={{
-                  ...btnPrimary, flex: 1,
-                  opacity: pinInput.length === 4 ? 1 : 0.5,
-                  cursor: pinInput.length === 4 ? 'pointer' : 'not-allowed',
-                }}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
               >
                 Tasdiqlash
               </button>
