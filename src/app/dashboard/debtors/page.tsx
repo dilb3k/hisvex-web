@@ -256,7 +256,13 @@ export default function DebtorsPage() {
     if (!selectedDebtor || saving) return
     setAdjustError('')
     const amount = parseFormattedAmount(adjustAmount)
-    if (amount <= 0) return
+    if (amount <= 0) {
+      // Real bug fix: this used to silently no-op on an empty/zero amount -
+      // the button isn't disabled for that case, so a tap produced no
+      // feedback at all and looked like the app had frozen.
+      setAdjustError(t('amountRequired'))
+      return
+    }
     if (type === 'subtract' && amount > selectedDebtor.amount) {
       setAdjustError('O\'chirilayotgan summa qarzdan katta')
       return

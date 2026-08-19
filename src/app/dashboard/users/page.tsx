@@ -6,10 +6,10 @@ import { useAppStore } from '@/lib/appStore'
 import { adminsApi, clearApiCache } from '@/lib/api'
 import {
   Users, CreditCard, Shield, Pencil, Trash2, X, Search, Clock, Crown,
-  UserPlus, RefreshCw, LogOut, Phone, CalendarDays, Sparkles,
+  UserPlus, RefreshCw, LogOut, Phone, CalendarDays, Sparkles, Activity,
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
-import { formatPhone, displayPhone } from '@/lib/formatters'
+import { formatPhone, displayPhone, formatLastActive } from '@/lib/formatters'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { User } from '@/lib/types'
 
@@ -29,6 +29,16 @@ function daysUntilExpiry(dateStr: string | null | undefined): number | null {
   const diff = new Date(dateStr).getTime() - Date.now()
   if (diff <= 0) return 0
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+// Quick-glance dot color for the "last active" indicator — deliberately
+// coarser than the exact relative-time text next to it.
+function lastActiveColor(dateStr?: string | null): string {
+  if (!dateStr) return 'var(--color-text-tertiary)'
+  const hours = (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60)
+  if (hours <= 0.5) return '#10B981'
+  if (hours <= 24) return '#F59E0B'
+  return 'var(--color-text-tertiary)'
 }
 
 function tierColor(tier?: User['tier']): string {
@@ -614,24 +624,36 @@ export default function UsersPage() {
                 )}
 
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
+                  display: 'flex', flexDirection: 'column', gap: 8,
                   paddingTop: 12, borderTop: '1px solid var(--color-border)',
                   fontSize: 12, color: 'var(--color-text-secondary)',
                 }}>
-                  {admin.phone_number && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                      <Phone size={12} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {displayPhone(admin.phone_number)}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                      background: lastActiveColor(admin.lastActionAt),
+                    }} />
+                    <Activity size={12} color={lastActiveColor(admin.lastActionAt)} />
+                    <span style={{ color: admin.lastActionAt ? 'var(--color-text)' : 'var(--color-text-tertiary)' }}>
+                      {formatLastActive(admin.lastActionAt)}
+                    </span>
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    {admin.phone_number && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                        <Phone size={12} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {displayPhone(admin.phone_number)}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                  {admin.createdAt && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
-                      <CalendarDays size={12} />
-                      {new Date(admin.createdAt).toLocaleDateString('uz-UZ', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </span>
-                  )}
+                    )}
+                    {admin.createdAt && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+                        <CalendarDays size={12} />
+                        {new Date(admin.createdAt).toLocaleDateString('uz-UZ', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>

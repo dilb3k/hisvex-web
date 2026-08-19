@@ -77,6 +77,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         inventoryPerDateCache: {
           [today]: { items: data.inventory, summary: undefined, fetchedAt: Date.now() },
         },
+        // Real bug fix: this global banner (rendered by AppLayout on every
+        // dashboard page) was only ever set on failure, never cleared on a
+        // later success - one transient blip (e.g. during refreshAll) left
+        // it stuck on screen indefinitely even after data was loading fine.
+        error: null,
       })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Dashboard yuklanmadi'
@@ -91,7 +96,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, products: true } }))
     try {
       const { data } = await productsApi.getAll()
-      set({ products: data })
+      set({ products: data, error: null })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Mahsulotlar yuklanmadi'
       set({ error: message })
@@ -117,6 +122,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
         inventory: date === get().selectedDate ? data.items : state.inventory,
         inventorySummary: date === get().selectedDate ? ((data.summary as InventorySummary) ?? null) : state.inventorySummary,
+        error: null,
       }))
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ombor ma\'lumotlari yuklanmadi'
@@ -129,7 +135,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, debtors: true } }))
     try {
       const { data } = await debtorsApi.getAll()
-      set({ debtors: data })
+      set({ debtors: data, error: null })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Qarzdorlar yuklanmadi'
       set({ error: message })
@@ -144,7 +150,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, snapshots: true } }))
     try {
       const { data } = await snapshotsApi.getRange(from, to)
-      set({ snapshots: data })
+      set({ snapshots: data, error: null })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Snapshotlar yuklanmadi'
       set({ error: message })

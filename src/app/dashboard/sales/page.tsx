@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/appStore'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { getBusinessDate } from '@/lib/businessDay'
@@ -161,17 +161,39 @@ export default function SalesPage() {
     })
   }, [])
 
+  // BarcodeScannerModal's camera-owning effect deliberately excludes
+  // onBarcodeDetected from its deps (re-subscribing per scan would restart
+  // the camera on every item). That means whatever function identity was
+  // passed in at the moment the modal opened is what keeps getting called
+  // for every scan afterward - if this closed over `cart`/`inventoryItems`
+  // directly, every scan after the first read a permanently stale
+  // snapshot from when the camera session started. In particular the
+  // `inCart >= invItem.currentQuantity` guard below would never see a cart
+  // count that grew from earlier scans in the same session, so scanning
+  // the same barcode past the stock limit kept reporting a false "added"
+  // success (green flash) - setCart's own functional update happened to
+  // still cap the real total correctly, but the cashier got no warning
+  // that the scan was actually a no-op. Reading through refs (always
+  // current) instead of the closed-over values fixes this regardless of
+  // which render's closure ends up being the one actually invoked.
+  const cartRef = useRef(cart)
+  useEffect(() => { cartRef.current = cart }, [cart])
+  const inventoryItemsRef = useRef(inventoryItems)
+  useEffect(() => { inventoryItemsRef.current = inventoryItems }, [inventoryItems])
+  const productsRef = useRef(products)
+  useEffect(() => { productsRef.current = products }, [products])
+
   const addBarcodeProduct = useCallback((code: string): string | null => {
     const trimmed = code.trim()
     if (!trimmed) return null
 
-    const product = products.find(p => p.barcodes?.includes(trimmed))
+    const product = productsRef.current.find(p => p.barcodes?.includes(trimmed))
     if (!product) return t('barcodeNotFound') || 'Barcode bo\'yicha mahsulot topilmadi'
 
-    const invItem = inventoryItems.find(i => i.productId === product._id)
+    const invItem = inventoryItemsRef.current.find(i => i.productId === product._id)
     if (!invItem || invItem.currentQuantity <= 0) return t('noStock')
 
-    const inCart = cart[product._id] || 0
+    const inCart = cartRef.current[product._id] || 0
     if (inCart >= invItem.currentQuantity) return t('maxStockReached')
 
     setCart(prev => {
@@ -180,7 +202,7 @@ export default function SalesPage() {
       return { ...prev, [product._id]: current + 1 }
     })
     return null
-  }, [products, inventoryItems, cart])
+  }, [])
 
   const handleBarcodeSubmit = useCallback(() => {
     const err = addBarcodeProduct(barcodeInput)

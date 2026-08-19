@@ -18,6 +18,11 @@ export interface User {
   businessDayEffectiveFrom?: string | null
   blockCode?: string | null
   subscriptionEndDate?: string | null
+  // Throttled server-side "last seen" touch (~5min resolution, see the
+  // backend's auth.middleware.ts) — bumped on every authenticated request,
+  // not just logins, so it reflects actual app usage rather than just login
+  // events. null means the account has never made an authenticated request.
+  lastActionAt?: string | null
   createdAt?: string
   updatedAt?: string
 }

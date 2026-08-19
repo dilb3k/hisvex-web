@@ -420,6 +420,25 @@ export default function StatisticsPage() {
   const range = useMemo(() => getPeriodRange(period, selectedDate), [period, selectedDate])
   const periodLabel = useMemo(() => formatPeriodLabel(period, selectedDate), [period, selectedDate])
 
+  // Real bug fix: rapidly switching period tabs or tapping prev/next date nav
+  // used to fire overlapping requests with no ordering guarantee - an older
+  // request resolving after a newer one would silently overwrite the newer,
+  // correct totals with stale data (and `loading` would clear regardless of
+  // which response "won"). Mirrors the cancellation guard the dailyChartItems
+  // effect right below already uses.
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setLoadError(false)
+    inventoryApi.getByDate(range.from, range.to)
+      .then((invRes) => { if (!cancelled) setInventoryItems(invRes.data?.items ?? []) })
+      .catch(() => { if (!cancelled) { setInventoryItems([]); setLoadError(true) } })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [range.from, range.to, refreshKey])
+
+  // Manual refresh button still needs a plain callable - re-fetches the
+  // current range on demand without duplicating the request logic above.
   const fetchData = useCallback(async () => {
     setLoading(true)
     setLoadError(false)
@@ -430,9 +449,7 @@ export default function StatisticsPage() {
       setInventoryItems([])
       setLoadError(true)
     } finally { setLoading(false) }
-  }, [range.from, range.to, refreshKey])
-
-  useEffect(() => { fetchData() }, [fetchData])
+  }, [range.from, range.to])
 
   // The chart needs finer-grained history than a single "daily" period's range provides
   // (that range is just one day) — widen it to a rolling 14-day window client-side only

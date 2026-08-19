@@ -443,7 +443,13 @@ export default function ProductsPage() {
   const handleRestock = async () => {
     if (!restockProduct || !restockQty) return
     const qtyToAdd = parseInt(restockQty.replace(/\D/g, ''), 10)
-    if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { console.error('Invalid restock quantity'); return }
+    if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) {
+      // Real bug fix: "0" is a non-empty string, so the button isn't
+      // `disabled` for it - this used to be a silent no-op (console.error
+      // only), giving the user zero feedback for what looked like a valid tap.
+      showToast(t('quantityPositiveRequired'), 'error')
+      return
+    }
     setIsRestocking(true)
     try {
       const { data: freshProduct } = await productsApi.getById(restockProduct._id)

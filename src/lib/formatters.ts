@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import { t } from './i18n'
 
 export const formatCurrency = (amount: number): string =>
   `${formatAmount(amount)} so'm`
@@ -63,4 +64,21 @@ export const formatShortDate = (dateStr?: string) => {
   const mm = (d.getMonth() + 1).toString().padStart(2, '0')
   const yyyy = d.getFullYear()
   return `${dd}.${mm}.${yyyy}`
+}
+
+// "Is this admin actually using the app" is a relative, at-a-glance signal —
+// exact-to-the-minute precision only matters for the first hour or so, after
+// which a bare date reads better than "312 soat oldin".
+export const formatLastActive = (dateStr?: string | null): string => {
+  if (!dateStr) return t('lastActiveNever')
+  const then = new Date(dateStr).getTime()
+  if (isNaN(then)) return t('lastActiveNever')
+  const minutes = Math.floor((Date.now() - then) / 60000)
+  if (minutes < 1) return t('lastActiveJustNow')
+  if (minutes < 60) return t('lastActiveMinutesAgo', { n: minutes })
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('lastActiveHoursAgo', { n: hours })
+  const days = Math.floor(hours / 24)
+  if (days < 14) return t('lastActiveDaysAgo', { n: days })
+  return formatDate(dateStr)
 }
