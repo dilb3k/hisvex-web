@@ -32,6 +32,7 @@ import {
 } from '@/lib/businessDay'
 import dayjs from 'dayjs'
 import { isBlockCodeDisabled, setBlockCodeDisabled } from '@/utils/blockCode'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 
 const THEMES = [
   { code: 'light', labelKey: 'light', icon: Sun },
@@ -334,6 +335,13 @@ export default function SettingsPage() {
     logout()
     router.push('/login')
   }, [logout, router])
+
+  // None of this page's modals handled Escape before - see useEscapeKey.ts.
+  useEscapeToClose([
+    [showBlockModal, () => setShowBlockModal(false)],
+    [showBusinessDay, () => setShowBusinessDay(false)],
+    [showTariffs, () => setShowTariffs(false)],
+  ])
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 40 }}>

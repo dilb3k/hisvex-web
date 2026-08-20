@@ -10,6 +10,7 @@ import { Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Trash2, 
 import { t } from '@/lib/i18n'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { ErrorBanner } from '@/components/StatusViews'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 import type { InventoryItem, Product } from '@/lib/types'
 
 // Shaped pulse-block skeleton matching this screen's actual layout (search bar
@@ -241,6 +242,10 @@ export default function SalesPage() {
       setSubmitting(false)
     }
   }, [cartArray, totalPieces, submitting, loadInventory, refreshAll])
+
+  // Manual-entry barcode sheet was not handled before - see useEscapeKey.ts.
+  // The camera scanner modal handles its own Escape internally.
+  useEscapeToClose([[showBarcode, () => { setShowBarcode(false); setBarcodeInput('') }]])
 
   if (loading) {
     return (

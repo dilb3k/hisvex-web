@@ -29,6 +29,7 @@ import {
 } from '@/lib/sharedStyles'
 import { formatPhone } from '@/lib/formatters'
 import { isBlockCodeDisabled } from '@/utils/blockCode'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 
 const normalizeDigits = (text: string) => text.replace(/[^\d]/g, '')
 
@@ -481,6 +482,20 @@ export default function ProductsPage() {
     }
     execDelete()
   }
+
+  // Escape closes only the top-most open overlay, ordered the same way the
+  // stacking actually happens (PIN verify can sit over the product/delete
+  // modal, barcode entry sits over the product modal, etc.) - see
+  // useEscapeKey.ts. None of this app's modals handled Escape at all before.
+  // (BarcodeScannerModal handles its own Escape internally, so it's not
+  // listed here - it's a separate always-mounted component instance.)
+  useEscapeToClose([
+    [showPinVerify, () => { setShowPinVerify(false); setPinAction(null) }],
+    [showBarcodeInput, () => setShowBarcodeInput(false)],
+    [showDeleteModal, () => setShowDeleteModal(false)],
+    [showRestockModal, closeRestockModal],
+    [showModal, closeProductModal],
+  ])
 
   return (
     <div style={{ padding: 0 }}>

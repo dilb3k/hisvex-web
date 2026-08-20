@@ -13,6 +13,7 @@ import {
 import { t } from '@/lib/i18n'
 import { formatMoney, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { SECTION_LABEL, ErrorBanner } from '@/components/StatusViews'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 
 type Period = 'daily' | 'monthly' | 'yearly'
 type BucketUnit = 'day' | 'month'
@@ -598,6 +599,9 @@ export default function StatisticsPage() {
     setAllTimeFrom(from); setAllTimeTo(to)
     await fetchAllTime(from, to)
   }, [fetchAllTime])
+
+  // Was not handled before - see useEscapeKey.ts.
+  useEscapeToClose([[showAllTime, () => setShowAllTime(false)]])
 
   function renderRankItem(item: ProductRankItem, index: number, isBlacklist: boolean, maxSold = 1) {
     const unsold = item.sold <= 0

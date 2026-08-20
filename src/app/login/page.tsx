@@ -7,6 +7,7 @@ import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/lib/authStore'
 import { t } from '@/lib/i18n'
 import { formatPhone } from '@/lib/formatters'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 
 const C = {
   bg: '#070512',
@@ -138,6 +139,9 @@ export default function LoginPage() {
   const openAdminContact = () => {
     window.open('https://t.me/dilbek7011', '_blank', 'noopener,noreferrer')
   }
+
+  // Was not handled before - see useEscapeKey.ts.
+  useEscapeToClose([[showBusinessDayHelp, () => setShowBusinessDayHelp(false)]])
 
   const inputStyle = (field: string): React.CSSProperties => ({
     width: '100%',

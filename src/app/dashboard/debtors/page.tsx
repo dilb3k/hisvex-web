@@ -10,6 +10,7 @@ import { ErrorBanner } from '@/components/StatusViews'
 import type { Debtor, DebtHistory } from '@/lib/types'
 import { formatPhone, displayPhone, formatShortDate, formatInputAmount, parseFormattedAmount } from '@/lib/formatters'
 import { isBlockCodeDisabled } from '@/utils/blockCode'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 import {
   overlay,
   modalContainer,
@@ -343,6 +344,17 @@ export default function DebtorsPage() {
       setSaving(false)
     }
   }
+
+  // Escape closes only the top-most open overlay (PIN verify can sit over
+  // the delete-confirm dialog) - see useEscapeKey.ts. None of this app's
+  // modals handled Escape at all before.
+  useEscapeToClose([
+    [showPinVerify, () => setShowPinVerify(false)],
+    [showDeleteConfirm, () => { setShowDeleteConfirm(false); setSelectedDebtor(null) }],
+    [showEditModal, () => { setShowEditModal(false); setSelectedDebtor(null) }],
+    [showDetailModal, () => { setShowDetailModal(false); setSelectedDebtor(null) }],
+    [showAddModal, () => setShowAddModal(false)],
+  ])
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>

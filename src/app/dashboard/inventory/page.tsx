@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { Product, InventoryItem } from '@/lib/types'
 import { formatMoney, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 
 const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 
@@ -183,6 +184,9 @@ export default function InventoryPage() {
 
   const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(String(entry.current)); setSaved(false) }
   const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput('') }
+
+  // Was not handled before - see useEscapeKey.ts.
+  useEscapeToClose([[!!selectedEntry, closeModal]])
 
   // Real bug fix: the raw value the user typed can exceed the day's opening
   // quantity. Block save + show the same inline message mobile already uses

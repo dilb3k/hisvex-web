@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import { AlertTriangle, Check, Keyboard, RotateCw, Scan, X } from 'lucide-react'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 
 type Props = {
   open: boolean
@@ -173,6 +174,9 @@ export function BarcodeScannerModal({ open, onClose, onBarcodeDetected, conflict
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conflictCheck, stopCamera, autoConfirm])
+
+  // Was not handled before - see useEscapeKey.ts.
+  useEscapeToClose([[open, onClose]])
 
   if (!open) return null
 
