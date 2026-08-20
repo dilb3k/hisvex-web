@@ -11,6 +11,7 @@ import {
 import { t } from '@/lib/i18n'
 import { formatPhone, displayPhone, formatLastActive } from '@/lib/formatters'
 import { ErrorBanner } from '@/components/StatusViews'
+import { useEscapeToClose } from '@/lib/useEscapeKey'
 import type { User } from '@/lib/types'
 
 // Kept as raw hex (not CSS vars) deliberately: these feed the `${color}1A`/`${color}33`
@@ -212,6 +213,14 @@ export default function UsersPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
+    // Real bug fix: `q.replace(/\D/g, '')` is '' for any letters-only search
+    // (e.g. searching a username), and String.includes('') is always true -
+    // so the phone-digit clause below silently made matchesSearch true for
+    // EVERY admin regardless of what was typed, effectively disabling the
+    // search box whenever the query had no digits in it. Guard exactly like
+    // the debtors page's equivalent filter already does: only attempt the
+    // phone-digit match when the query actually contains digits to match.
+    const searchDigits = q.replace(/\D/g, '')
     return admins.filter((a) => {
       const matchesTier = tierFilter === 'all' || a.tier === tierFilter
       const matchesStatus = statusFilter === 'all'
@@ -219,7 +228,7 @@ export default function UsersPage() {
         || (statusFilter === 'inactive' && a.isActive === false)
       const matchesSearch = !q
         || a.username.toLowerCase().includes(q)
-        || (a.phone_number || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+        || (!!searchDigits && (a.phone_number || '').replace(/\D/g, '').includes(searchDigits))
       return matchesTier && matchesStatus && matchesSearch
     })
   }, [admins, search, tierFilter, statusFilter])
@@ -313,6 +322,7 @@ export default function UsersPage() {
             <button
               onClick={handleRefresh}
               title={t('refresh')}
+              aria-label={t('refresh')}
               style={{
                 width: 44, height: 44, borderRadius: 12,
                 border: '1px solid rgba(255,255,255,0.2)',
@@ -327,6 +337,7 @@ export default function UsersPage() {
             <button
               onClick={handleLogout}
               title={t('logout')}
+              aria-label={t('logout')}
               style={{
                 width: 44, height: 44, borderRadius: 12,
                 border: '1px solid rgba(239,68,68,0.35)',
@@ -534,7 +545,13 @@ export default function UsersPage() {
                 <button
                   onClick={() => handleToggleActive(admin)}
                   disabled={togglingId === admin._id}
-                  title={isInactive ? t('adminActivated') : t('adminDeactivated')}
+                  // Real bug fix: this showed the past-tense toast copy
+                  // ("Foydalanuvchi faollashtirildi") as the *pre-click*
+                  // tooltip, which reads as if the action already happened.
+                  // Use the same action-label keys (unblockUser/blockUser)
+                  // the identical toggle on the Settings page already uses.
+                  title={isInactive ? t('unblockUser') : t('blockUser')}
+                  aria-label={isInactive ? t('unblockUser') : t('blockUser')}
                   style={{
                     position: 'absolute', top: 14, right: 14,
                     width: 44, height: 24, borderRadius: 12,
@@ -763,6 +780,11 @@ function AdminFormModal({
 
   const isEdit = !!admin
 
+  // Mounted only while open, so Escape always closes this modal.
+  useEscapeToClose([[true, onClose]])
+
+  const canSubmit = !saving && !!username.trim() && (isEdit || password.length >= 6)
+
   const handleSubmit = async () => {
     if (!username.trim()) return
     if (!isEdit && password.length < 6) return
@@ -855,6 +877,12 @@ function AdminFormModal({
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                // Real bug fix: this modal has no <form> (unlike login/page.tsx),
+                // so Enter silently did nothing here - a user typing
+                // username/password and hitting Enter out of habit got no
+                // feedback at all. Mirrors the Enter-to-submit convention the
+                // barcode-entry modals already use.
+                onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit() }}
                 style={inputStyle}
                 placeholder={t('loginPlaceholder_Admin')}
               />
@@ -870,6 +898,7 @@ function AdminFormModal({
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit() }}
                 style={inputStyle}
                 placeholder={t('passwordPlaceholder_Admin')}
               />
@@ -946,12 +975,12 @@ function AdminFormModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !username.trim() || (!isEdit && password.length < 6)}
+            disabled={!canSubmit}
             style={{
               flex: 1, padding: '12px 0', borderRadius: 10,
               border: 'none',
               background: 'var(--color-primary)',
-              opacity: saving || !username.trim() || (!isEdit && password.length < 6) ? 0.55 : 1,
+              opacity: canSubmit ? 1 : 0.55,
               color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -986,6 +1015,9 @@ function DeleteConfirmModal({
 }) {
   const [deleting, setDeleting] = useState(false)
   const showToast = useAppStore((s) => s.showToast)
+
+  // Mounted only while open, so Escape always closes this modal.
+  useEscapeToClose([[true, onClose]])
 
   const handleDelete = async () => {
     setDeleting(true)
