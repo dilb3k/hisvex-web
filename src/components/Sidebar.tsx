@@ -128,7 +128,7 @@ export function Sidebar() {
           ) : (
             <>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <img src="/logo.png" alt="Hisvex" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                <img src="/logo-256.png" alt="Hisvex" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                 <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
               </div>
               <button

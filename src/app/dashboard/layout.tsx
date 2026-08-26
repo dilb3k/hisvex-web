@@ -49,7 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }}>
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, #070512 0%, #0F0A2E 30%, #0C0820 65%, #070512 100%)' }} />
         <div style={{ position: 'relative', textAlign: 'center', zIndex: 1 }}>
-          <img src="/logo.png" alt="Hisvex" style={{
+          <img src="/logo-256.png" alt="Hisvex" style={{
             width: 80, height: 80, borderRadius: '50%',
             objectFit: 'cover',
             margin: '0 auto 20px',

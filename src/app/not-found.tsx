@@ -8,7 +8,7 @@ export default function NotFound() {
       background: '#070512', color: '#fff', textAlign: 'center', padding: 24,
     }}>
       <div>
-        <img src="/logo.png" alt="Hisvex" style={{
+        <img src="/logo-256.png" alt="Hisvex" style={{
           width: 80, height: 80, borderRadius: '50%', objectFit: 'cover',
           margin: '0 auto 24px',
           boxShadow: '0 8px 40px rgba(124,58,237,0.4)',

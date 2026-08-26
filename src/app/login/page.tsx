@@ -197,7 +197,7 @@ export default function LoginPage() {
             boxShadow: '0 12px 40px rgba(124,58,237,0.35)',
           }}>
             <Image
-              src="/logo.png" alt="Hisvex"
+              src="/logo-256.png" alt="Hisvex"
               width={88} height={88}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               priority
