@@ -19,15 +19,13 @@ import {
   parseQuantityInput,
 } from '@/lib/inventory'
 import dayjs from 'dayjs'
-import { ChevronLeft, ChevronRight, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { Product, InventoryItem, ProductUnit } from '@/lib/types'
-import { formatMoney, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
+import { formatMoney, formatInputAmount, parseFormattedAmount, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
-
-const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 
 interface EnrichedItem {
   product: Product
@@ -102,6 +100,10 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [selectedEntry, setSelectedEntry] = useState<EnrichedItem | null>(null)
   const [currentQtyInput, setCurrentQtyInput] = useState('')
+  // Set only when the user overwrites the expected-revenue figure. Kept
+  // separate from the computed one so clearing the field returns to "value
+  // these units at the list price" instead of meaning "they brought in 0".
+  const [revenueInput, setRevenueInput] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -206,8 +208,8 @@ export default function InventoryPage() {
   const goToPrevDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).subtract(1, 'day').format('YYYY-MM-DD')), [])
   const goToNextDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).add(1, 'day').format('YYYY-MM-DD')), [])
 
-  const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(formatQuantityValue(entry.current, entry.unit)); setSaved(false) }
-  const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput('') }
+  const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(formatQuantityValue(entry.current, entry.unit)); setRevenueInput(null); setSaved(false) }
+  const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput(''); setRevenueInput(null) }
 
   // Was not handled before - see useEscapeKey.ts.
   useEscapeToClose([[!!selectedEntry, closeModal]])
@@ -231,7 +233,12 @@ export default function InventoryPage() {
       // the inline check above is somehow bypassed.
       const newQty = clampCurrentQuantity(parseQuantityInput(currentQtyInput, selectedEntry.unit), selectedEntry.opening)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
-      await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
+      const statedRevenue = preview?.isOverridden ? preview.newRevenue : undefined
+      await inventoryApi.bulkUpdate([{
+        productId,
+        currentQuantity: newQty,
+        ...(statedRevenue !== undefined ? { lineRevenue: statedRevenue } : {}),
+      }])
       clearApiCache()
       setItems((prev) => prev.map((item) => {
         if (item.productId !== productId && item.product?._id !== productId) return item
@@ -239,12 +246,13 @@ export default function InventoryPage() {
         const newSold = roundQty(Math.max(opening - newQty, 0))
         const sp = resolveSellPrice(item, item.product)
         const bp = resolveBuyPrice(item, item.product)
+        const revenue = statedRevenue ?? roundMoney(newSold * sp)
         return {
           ...item,
           currentQuantity: newQty,
           sold: newSold,
-          revenue: roundMoney(newSold * sp),
-          realizedProfit: roundMoney(newSold * (sp - bp)),
+          revenue,
+          realizedProfit: roundMoney(revenue - newSold * bp),
         }
       }))
       await refreshAll()
@@ -263,10 +271,21 @@ export default function InventoryPage() {
     if (!selectedEntry || !isEditable || overCount) return null
     const newCurrent = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     const newSold = roundQty(Math.max(selectedEntry.opening - newCurrent, 0))
-    const newRevenue = roundMoney(newSold * selectedEntry.sellPrice)
-    const newProfit = roundMoney(newSold * (selectedEntry.sellPrice - selectedEntry.buyPrice))
-    return { prevSold: selectedEntry.sold, newSold, newRevenue, newProfit }
-  }, [selectedEntry, currentQtyInput, isEditable, overCount])
+    const listRevenue = roundMoney(newSold * selectedEntry.sellPrice)
+    // An overwritten revenue is authoritative. Profit is never entered — it is
+    // always revenue minus the cost of the units sold, so every so'm taken off
+    // the revenue comes straight off the profit.
+    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseFormattedAmount(revenueInput))
+    const newProfit = roundMoney(newRevenue - newSold * selectedEntry.buyPrice)
+    return {
+      prevSold: selectedEntry.sold,
+      newSold,
+      listRevenue,
+      newRevenue,
+      newProfit,
+      isOverridden: revenueInput !== null && Math.abs(newRevenue - listRevenue) > 0.005,
+    }
+  }, [selectedEntry, currentQtyInput, revenueInput, isEditable, overCount])
 
   const renderDateNav = () => (
     <div style={s.dateNav}>
@@ -421,8 +440,47 @@ export default function InventoryPage() {
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.newSold, selectedEntry.unit)}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedRevenue')}</span><span style={s.fieldValue}>{formatMoney(p.newRevenue)}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedProfit')}</span><span style={s.fieldValue}>{formatMoney(p.newProfit)}</span></div>
+                  {/* Editable: the shop often takes a different amount than
+                      the list price implies. Profit is deliberately NOT
+                      editable — it is always revenue minus the cost of the
+                      units sold, so it follows from this field on its own. */}
+                  <div style={{ ...s.fieldRow, alignItems: 'center' }}>
+                    <span style={s.fieldLabel}>{t('expectedRevenue')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        aria-label={t('expectedRevenue')}
+                        value={p.isOverridden || revenueInput !== null
+                          ? (revenueInput ?? '')
+                          : formatInputAmount(String(p.listRevenue))}
+                        onChange={(e) => setRevenueInput(formatInputAmount(e.target.value))}
+                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputAmount(String(p.listRevenue))) }}
+                        style={{
+                          ...s.modalInput,
+                          width: 130,
+                          ...(p.isOverridden ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)' } : {}),
+                        }}
+                      />
+                      {p.isOverridden && (
+                        <button
+                          onClick={() => setRevenueInput(null)}
+                          title={t('resetPrice')}
+                          aria-label={t('resetPrice')}
+                          className="icon-ghost-btn"
+                          style={{ width: 28, height: 28, borderRadius: 7 }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={s.fieldRow}>
+                    <span style={s.fieldLabel}>{t('expectedProfit')}</span>
+                    <span style={{ ...s.fieldValue, color: p.newProfit < 0 ? 'var(--color-danger)' : undefined }}>
+                      {formatMoney(p.newProfit)}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>

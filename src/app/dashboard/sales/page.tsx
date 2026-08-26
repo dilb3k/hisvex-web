@@ -16,7 +16,7 @@ import {
   formatQuantityValue,
   normalizeQuantityInput,
   parseQuantityInput,
-  roundPrice,
+  distributeTotal,
 } from '@/lib/inventory'
 import { formatMoney, formatInputAmount, parseFormattedAmount, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { Minus, Plus, Package, Percent, Scan, Search, ShoppingBag, ShoppingCart, Tag, Trash2, Wallet, X } from 'lucide-react'
@@ -26,7 +26,7 @@ import { ErrorBanner } from '@/components/StatusViews'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 import type { InventoryItem, Product } from '@/lib/types'
 
-type DiscountMode = 'none' | 'amount' | 'percent'
+type DiscountMode = 'none' | 'amount' | 'percent' | 'total'
 
 // Shaped pulse-block skeleton matching this screen's actual layout (search bar
 // + hint strip + a handful of product/cart cards), following the same
@@ -162,31 +162,29 @@ export default function SalesPage() {
     const subtotal = roundMoney(cartArray.reduce((sum, line) => sum + line.lineTotal, 0))
     const raw = parseFormattedAmount(discountInput)
 
-    let requested = 0
-    if (discountMode === 'amount') requested = Math.min(raw, subtotal)
-    else if (discountMode === 'percent') requested = subtotal * (Math.min(raw, 100) / 100)
-    requested = Math.max(requested, 0)
+    // Every way of cutting the price — a so'm discount, a percent, or simply
+    // typing the final figure — resolves to one target amount, so there is a
+    // single code path from here on.
+    let target = subtotal
+    if (discountMode === 'amount') target = subtotal - Math.min(raw, subtotal)
+    else if (discountMode === 'percent') target = subtotal * (1 - Math.min(raw, 100) / 100)
+    else if (discountMode === 'total') target = Math.min(raw, subtotal)
+    target = roundMoney(Math.max(target, 0))
 
-    const factor = subtotal > 0 ? (subtotal - requested) / subtotal : 1
-    const lines = cartArray.map(line => ({
+    // Distributed exactly, so the amount the cashier sees is the amount the
+    // server records — down to the so'm. Sending money per line (rather than a
+    // per-unit price) is what makes that possible: 25 000 over 3 units has no
+    // exact per-unit price.
+    const shares = distributeTotal(cartArray.map(line => line.lineTotal), target)
+    const lines = cartArray.map((line, i) => ({
       ...line,
-      effectiveUnitPrice: roundPrice(line.unitPrice * factor),
+      effectiveLineRevenue: shares[i] ?? line.lineTotal,
     }))
-
-    // The total is DERIVED from the per-unit prices actually sent, never from
-    // `subtotal - requested`. Computing it independently let the two drift:
-    // a 10 000 discount on 3 x 10 000 rounds each unit to 6 667, so the server
-    // records 20 001 while the screen said 20 000. The cashier must always see
-    // the number that will land in the report, so the requested discount bends
-    // by a so'm instead of the total lying.
-    const total = roundMoney(
-      lines.reduce((sum, line) => sum + roundMoney(line.quantity * line.effectiveUnitPrice), 0),
-    )
 
     return {
       subtotal,
-      discount: roundMoney(subtotal - total),
-      total,
+      discount: roundMoney(subtotal - target),
+      total: target,
       lines,
       // Line-level overrides count as a discount for display purposes too, so
       // the summary reflects everything given away, not just the cart-level cut.
@@ -363,13 +361,15 @@ export default function SalesPage() {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
     try {
-      const lines = totals.lines.map(({ productId, quantity, effectiveUnitPrice, listPrice }) => ({
+      const lines = totals.lines.map(({ productId, quantity, effectiveLineRevenue, listPrice }) => ({
         productId,
         quantity,
         // Only sent when it actually differs — an untouched line stays on the
         // server's cheap list-price path instead of being routed through the
-        // locked-price accumulators for no reason.
-        ...(Math.abs(effectiveUnitPrice - listPrice) > 0.005 ? { unitPrice: effectiveUnitPrice } : {}),
+        // locked-revenue accumulators for no reason.
+        ...(Math.abs(effectiveLineRevenue - roundMoney(quantity * listPrice)) > 0.005
+          ? { lineRevenue: effectiveLineRevenue }
+          : {}),
       }))
       const today = getBusinessDate()
       await inventoryApi.recordSales(today, lines)
@@ -886,7 +886,7 @@ export default function SalesPage() {
               {t('discount')}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
-              {(['none', 'amount', 'percent'] as DiscountMode[]).map(mode => {
+              {(['none', 'amount', 'percent', 'total'] as DiscountMode[]).map(mode => {
                 const active = discountMode === mode
                 return (
                   <button
@@ -905,7 +905,13 @@ export default function SalesPage() {
                       transition: 'all 0.15s',
                     }}
                   >
-                    {mode === 'none' ? t('noDiscount') : mode === 'amount' ? "so'm" : '%'}
+                    {mode === 'none'
+                      ? t('noDiscount')
+                      : mode === 'amount'
+                        ? "so'm"
+                        : mode === 'percent'
+                          ? '%'
+                          : t('finalPrice')}
                   </button>
                 )
               })}
@@ -915,8 +921,8 @@ export default function SalesPage() {
                 type="text"
                 inputMode="numeric"
                 autoFocus
-                aria-label={discountMode === 'percent' ? t('discountPercent') : t('discountAmount')}
-                placeholder={discountMode === 'percent' ? '10' : '5 000'}
+                aria-label={discountMode === 'percent' ? t('discountPercent') : discountMode === 'total' ? t('finalPrice') : t('discountAmount')}
+                placeholder={discountMode === 'percent' ? '10' : discountMode === 'total' ? formatInputAmount(String(totals.subtotal)) : '5 000'}
                 value={discountInput}
                 onChange={e => setDiscountInput(formatInputAmount(e.target.value))}
                 style={{ ...smallInput, flex: '1 1 110px', maxWidth: 160 }}
@@ -935,18 +941,47 @@ export default function SalesPage() {
             <div style={{ ...kpiIcon, width: 34, height: 34, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}>
               <Wallet size={17} />
             </div>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}</div>
-              <div style={{
-                fontSize: 19,
-                fontWeight: 800,
-                color: 'var(--color-metric-revenue)',
-                fontVariantNumeric: 'tabular-nums',
-                letterSpacing: -0.3,
-                overflowWrap: 'anywhere',
-              }}>
-                {formatMoney(totals.total)}
-              </div>
+              {/* Directly editable: the most common real-world ask is "u shuncha
+                  berdi" — the cashier states the money taken and everything
+                  else (per-line amounts, the discount, the profit) follows from
+                  it, rather than making them work backwards to a percentage. */}
+              <input
+                type="text"
+                inputMode="numeric"
+                aria-label={t('saleTotal')}
+                disabled={totalPieces === 0}
+                value={
+                  discountMode === 'total'
+                    ? discountInput
+                    : formatInputAmount(String(totals.total))
+                }
+                onChange={e => {
+                  setDiscountMode('total')
+                  setDiscountInput(formatInputAmount(e.target.value))
+                }}
+                onFocus={() => {
+                  if (discountMode !== 'total') {
+                    setDiscountMode('total')
+                    setDiscountInput(formatInputAmount(String(totals.total)))
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: 0,
+                  border: 'none',
+                  borderBottom: `1px dashed ${totalPieces === 0 ? 'transparent' : 'var(--color-border)'}`,
+                  background: 'transparent',
+                  outline: 'none',
+                  fontSize: 19,
+                  fontWeight: 800,
+                  color: 'var(--color-metric-revenue)',
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: -0.3,
+                  fontFamily: 'inherit',
+                }}
+              />
               {/* Only shown when money was actually given away, so the normal
                   sale keeps a single clean number. */}
               {hasDiscount && (
