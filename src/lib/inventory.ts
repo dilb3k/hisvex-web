@@ -1,4 +1,4 @@
-import type { InventoryItem, Product, InventoryMetrics } from './types'
+import type { InventoryItem, Product, InventoryMetrics, ProductUnit } from './types'
 
 export interface ProductValidationErrors {
   name: string
@@ -6,6 +6,90 @@ export interface ProductValidationErrors {
   sellPrice: string
   quantity: string
 }
+
+/* ── Units ────────────────────────────────────────────────────────────────
+ * Mirrors the backend's utils/quantity.ts. A product is either counted
+ * ("dona", whole numbers only) or weighed ("kg", up to 3 decimals), and every
+ * quantity that reaches arithmetic or an input field goes through here so the
+ * two platforms can't drift apart on what a valid quantity is.
+ */
+
+export const PRODUCT_UNITS: ProductUnit[] = ['dona', 'kg']
+export const DEFAULT_UNIT: ProductUnit = 'dona'
+export const QTY_DECIMALS = 3
+const QTY_FACTOR = 10 ** QTY_DECIMALS
+/** Sub-grid differences are float noise, not a real over-count. */
+export const QTY_EPSILON = 1 / (QTY_FACTOR * 2)
+
+export const normalizeUnit = (value?: string | null): ProductUnit =>
+  value === 'kg' ? 'kg' : DEFAULT_UNIT
+
+export const isWeighed = (unit?: string | null): boolean => normalizeUnit(unit) === 'kg'
+
+/** Round to the storable quantity precision — see the backend's roundQty. */
+export const roundQty = (value: number): number =>
+  Number.isFinite(value) ? Math.round(value * QTY_FACTOR) / QTY_FACTOR : 0
+
+export const roundMoney = (value: number): number =>
+  Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
+
+/**
+ * Round a *unit price* to whole so'm. So'm has no subunit in practice — every
+ * price in the app is entered and shown as a whole number — so a discounted
+ * per-unit price must land there too, otherwise a distributed discount emits
+ * prices like 6666.67 and the recorded revenue picks up stray tiyin.
+ */
+export const roundPrice = (value: number): number =>
+  Number.isFinite(value) ? Math.round(value) : 0
+
+/** Coerce a quantity to what its unit can represent. */
+export const normalizeQuantity = (value: number, unit?: string | null): number => {
+  if (!Number.isFinite(value)) return 0
+  const safe = Math.max(value, 0)
+  return isWeighed(unit) ? roundQty(safe) : Math.round(safe)
+}
+
+export const qtyGreaterThan = (a: number, b: number): boolean => a - b > QTY_EPSILON
+
+export const unitLabel = (unit?: string | null): string => normalizeUnit(unit)
+
+/**
+ * Sanitize raw text from a quantity field. "dona" keeps digits only (as
+ * before); "kg" additionally allows a single decimal separator and caps the
+ * fraction at 3 digits, so the field can never hold something the API would
+ * reject. Comma is accepted and rewritten to a dot — it's the separator on a
+ * uz-UZ keyboard.
+ */
+export const normalizeQuantityInput = (value: string, unit?: string | null): string => {
+  if (!isWeighed(unit)) return value.replace(/[^\d]/g, '')
+  const cleaned = value.replace(/,/g, '.').replace(/[^\d.]/g, '')
+  const [whole, ...rest] = cleaned.split('.')
+  if (rest.length === 0) return whole
+  return `${whole}.${rest.join('').slice(0, QTY_DECIMALS)}`
+}
+
+/** Parse a sanitized quantity field into a number valid for its unit. */
+export const parseQuantityInput = (value: string, unit?: string | null): number => {
+  const normalized = normalizeQuantityInput(value, unit)
+  if (!normalized || normalized === '.') return 0
+  const parsed = Number.parseFloat(normalized)
+  return Number.isFinite(parsed) ? normalizeQuantity(parsed, unit) : 0
+}
+
+/** "2.5" / "22" — the number alone, trailing zeros trimmed. */
+export const formatQuantityValue = (value: number, unit?: string | null): string => {
+  const normalized = normalizeQuantity(value, unit)
+  return isWeighed(unit)
+    ? String(Number(normalized.toFixed(QTY_DECIMALS)))
+    : normalized.toLocaleString('uz-UZ')
+}
+
+/** "2.5 kg" / "22 dona" — the number with its unit, for display. */
+export const formatQuantity = (value: number, unit?: string | null): string =>
+  `${formatQuantityValue(value, unit)} ${unitLabel(unit)}`
+
+/** How much one tap of +/- moves a quantity, per unit. */
+export const stepFor = (unit?: string | null): number => (isWeighed(unit) ? 0.1 : 1)
 
 export const normalizeDigits = (value: string): string =>
   value.replace(/[^\d]/g, '')
@@ -32,7 +116,7 @@ export const formatMoney = (value?: number): string => {
  * so a bad value can never persist even if the inline check is bypassed.
  */
 export const clampCurrentQuantity = (quantity: number, startQuantity: number): number =>
-  Math.min(Math.max(quantity, 0), startQuantity)
+  roundQty(Math.min(Math.max(quantity, 0), startQuantity))
 
 export const resolveSellPrice = (item: { sellPrice?: number; price?: number }, product?: { sellPrice?: number; sellingPrice?: number }): number =>
   item.sellPrice ?? item.price ?? product?.sellPrice ?? product?.sellingPrice ?? 0
@@ -75,13 +159,16 @@ export const getInventoryMetrics = (
   const storedSellPrice = resolveSellPrice(item, item.product)
   const storedBuyPrice = resolveBuyPrice(item, item.product)
   const opening = item.startQuantity ?? item.openingQuantity ?? 0
-  const remaining = Math.max(item.currentQuantity, 0)
-  const sold = item.sold ?? Math.max(opening - item.currentQuantity, 0)
-  const revenue = sold * storedSellPrice
-  const realizedProfit = sold * (storedSellPrice - storedBuyPrice)
-  const stockSellValue = remaining * storedSellPrice
-  const stockBuyValue = remaining * storedBuyPrice
-  const potentialProfit = remaining * (storedSellPrice - storedBuyPrice)
+  const remaining = roundQty(Math.max(item.currentQuantity, 0))
+  const sold = item.sold ?? roundQty(Math.max(opening - item.currentQuantity, 0))
+  // Prefer the server's figures when present: units sold at a negotiated price
+  // are valued in the entry's locked accumulators, which this local derivation
+  // (sold x list price) cannot see.
+  const revenue = item.revenue ?? roundMoney(sold * storedSellPrice)
+  const realizedProfit = item.realizedProfit ?? roundMoney(sold * (storedSellPrice - storedBuyPrice))
+  const stockSellValue = roundMoney(remaining * storedSellPrice)
+  const stockBuyValue = roundMoney(remaining * storedBuyPrice)
+  const potentialProfit = roundMoney(remaining * (storedSellPrice - storedBuyPrice))
   return {
     remaining, sold, revenue, realizedProfit,
     stockSellValue, stockBuyValue, potentialProfit,
@@ -117,5 +204,14 @@ export const getInventoryTotals = (items: (InventoryItem & { product?: Product }
     totalStockBuyValue += metrics.stockBuyValue
     totalStockProfit += metrics.potentialProfit
   }
-  return { start: totalStart, current: totalCurrent, sold: totalSold, revenue: totalRevenue, profit: totalProfit, stockSellValue: totalStockSellValue, stockBuyValue: totalStockBuyValue, stockProfit: totalStockProfit }
+  return {
+    start: roundQty(totalStart),
+    current: roundQty(totalCurrent),
+    sold: roundQty(totalSold),
+    revenue: roundMoney(totalRevenue),
+    profit: roundMoney(totalProfit),
+    stockSellValue: roundMoney(totalStockSellValue),
+    stockBuyValue: roundMoney(totalStockBuyValue),
+    stockProfit: roundMoney(totalStockProfit),
+  }
 }

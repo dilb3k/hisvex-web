@@ -4,13 +4,26 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { getBusinessDate, isPastBusinessDate, isTodayBusinessDate, isFutureBusinessDate } from '@/lib/businessDay'
-import { resolveSellPrice, resolveBuyPrice, clampCurrentQuantity } from '@/lib/inventory'
+import {
+  resolveSellPrice,
+  resolveBuyPrice,
+  clampCurrentQuantity,
+  normalizeUnit,
+  isWeighed,
+  roundQty,
+  roundMoney,
+  qtyGreaterThan,
+  formatQuantity,
+  formatQuantityValue,
+  normalizeQuantityInput,
+  parseQuantityInput,
+} from '@/lib/inventory'
 import dayjs from 'dayjs'
 import { ChevronLeft, ChevronRight, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
-import type { Product, InventoryItem } from '@/lib/types'
+import type { Product, InventoryItem, ProductUnit } from '@/lib/types'
 import { formatMoney, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 
@@ -19,6 +32,7 @@ const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 interface EnrichedItem {
   product: Product
   inv: InventoryItem | undefined
+  unit: ProductUnit
   opening: number
   current: number
   remaining: number
@@ -140,16 +154,20 @@ export default function InventoryPage() {
       if (!product) continue
       const sellPrice = resolveSellPrice(item, product)
       const buyPrice = resolveBuyPrice(item, product)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const current = item.currentQuantity ?? 0
-      const remaining = Math.max(current, 0)
-      const sold = item.sold ?? Math.max(opening - current, 0)
-      const revenue = item.revenue ?? (sold * sellPrice)
-      const realizedProfit = item.realizedProfit ?? (sold * (sellPrice - buyPrice))
-      const stockSellValue = remaining * sellPrice
+      const unit = normalizeUnit(item.unit ?? (product as Product).unit)
+      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const current = roundQty(item.currentQuantity ?? 0)
+      const remaining = roundQty(Math.max(current, 0))
+      const sold = item.sold ?? roundQty(Math.max(opening - current, 0))
+      // Server figures win when present: units sold at a negotiated price are
+      // valued in the entry's locked accumulators, which sold x list price
+      // cannot reproduce.
+      const revenue = item.revenue ?? roundMoney(sold * sellPrice)
+      const realizedProfit = item.realizedProfit ?? roundMoney(sold * (sellPrice - buyPrice))
+      const stockSellValue = roundMoney(remaining * sellPrice)
       const unitProfit = sellPrice - buyPrice
       result.push({
-        product: product as Product, inv: item,
+        product: product as Product, inv: item, unit,
         opening, current, remaining, sold, revenue, realizedProfit,
         stockSellValue, unitProfit, sellPrice, buyPrice,
       })
@@ -176,13 +194,19 @@ export default function InventoryPage() {
   const totals = useMemo(() => {
     let start = 0, remaining = 0, sold = 0, revenue = 0, profit = 0
     for (const e of combinedData) { start += e.opening; remaining += e.remaining; sold += e.sold; revenue += e.revenue; profit += e.realizedProfit }
-    return { start, remaining, sold, revenue, profit }
+    return {
+      start: roundQty(start),
+      remaining: roundQty(remaining),
+      sold: roundQty(sold),
+      revenue: roundMoney(revenue),
+      profit: roundMoney(profit),
+    }
   }, [combinedData])
 
   const goToPrevDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).subtract(1, 'day').format('YYYY-MM-DD')), [])
   const goToNextDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).add(1, 'day').format('YYYY-MM-DD')), [])
 
-  const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(String(entry.current)); setSaved(false) }
+  const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(formatQuantityValue(entry.current, entry.unit)); setSaved(false) }
   const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput('') }
 
   // Was not handled before - see useEscapeKey.ts.
@@ -191,8 +215,10 @@ export default function InventoryPage() {
   // Real bug fix: the raw value the user typed can exceed the day's opening
   // quantity. Block save + show the same inline message mobile already uses
   // in that case, rather than silently accepting a nonsensical "remaining".
-  const rawQtyInput = parseWholeNumber(currentQtyInput)
-  const overCount = !!selectedEntry && isEditable && rawQtyInput > selectedEntry.opening
+  const rawQtyInput = selectedEntry
+    ? parseQuantityInput(currentQtyInput, selectedEntry.unit)
+    : 0
+  const overCount = !!selectedEntry && isEditable && qtyGreaterThan(rawQtyInput, selectedEntry.opening)
 
   const handleSave = async () => {
     if (!selectedEntry || !isEditable) return
@@ -203,22 +229,22 @@ export default function InventoryPage() {
       // to the API at the point it gets applied/saved, mirroring mobile's
       // clampCurrentQuantity exactly, so a bad value can never persist even if
       // the inline check above is somehow bypassed.
-      const newQty = clampCurrentQuantity(parseWholeNumber(currentQtyInput), selectedEntry.opening)
+      const newQty = clampCurrentQuantity(parseQuantityInput(currentQtyInput, selectedEntry.unit), selectedEntry.opening)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
       await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
       clearApiCache()
       setItems((prev) => prev.map((item) => {
         if (item.productId !== productId && item.product?._id !== productId) return item
         const opening = item.startQuantity ?? item.openingQuantity ?? 0
-        const newSold = Math.max(opening - newQty, 0)
+        const newSold = roundQty(Math.max(opening - newQty, 0))
         const sp = resolveSellPrice(item, item.product)
         const bp = resolveBuyPrice(item, item.product)
         return {
           ...item,
           currentQuantity: newQty,
           sold: newSold,
-          revenue: newSold * sp,
-          realizedProfit: newSold * (sp - bp),
+          revenue: roundMoney(newSold * sp),
+          realizedProfit: roundMoney(newSold * (sp - bp)),
         }
       }))
       await refreshAll()
@@ -235,10 +261,10 @@ export default function InventoryPage() {
 
   const preview = useMemo(() => {
     if (!selectedEntry || !isEditable || overCount) return null
-    const newCurrent = parseWholeNumber(currentQtyInput)
-    const newSold = Math.max(selectedEntry.opening - newCurrent, 0)
-    const newRevenue = newSold * selectedEntry.sellPrice
-    const newProfit = newSold * (selectedEntry.sellPrice - selectedEntry.buyPrice)
+    const newCurrent = parseQuantityInput(currentQtyInput, selectedEntry.unit)
+    const newSold = roundQty(Math.max(selectedEntry.opening - newCurrent, 0))
+    const newRevenue = roundMoney(newSold * selectedEntry.sellPrice)
+    const newProfit = roundMoney(newSold * (selectedEntry.sellPrice - selectedEntry.buyPrice))
     return { prevSold: selectedEntry.sold, newSold, newRevenue, newProfit }
   }, [selectedEntry, currentQtyInput, isEditable, overCount])
 
@@ -280,9 +306,12 @@ export default function InventoryPage() {
     const neutralSoft = 'var(--color-border)'
     const neutralInk = 'var(--color-text-secondary)'
     const kpis = [
-      { icon: <Package size={18} />, label: t('start'), value: String(totals.start), color: neutralInk, soft: neutralSoft },
-      { icon: <Archive size={18} />, label: t('remaining'), value: String(totals.remaining), color: neutralInk, soft: neutralSoft },
-      { icon: <ShoppingCart size={18} />, label: t('sold'), value: String(totals.sold), color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)' },
+      // No unit suffix on these three: they sum across products measured in
+      // different units, so "24.5 dona" would be wrong. formatQuantityValue
+      // with 'kg' just means "keep the decimals, drop the trailing zeros".
+      { icon: <Package size={18} />, label: t('start'), value: formatQuantityValue(totals.start, 'kg'), color: neutralInk, soft: neutralSoft },
+      { icon: <Archive size={18} />, label: t('remaining'), value: formatQuantityValue(totals.remaining, 'kg'), color: neutralInk, soft: neutralSoft },
+      { icon: <ShoppingCart size={18} />, label: t('sold'), value: formatQuantityValue(totals.sold, 'kg'), color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)' },
       { icon: <Wallet size={18} />, label: t('revenue'), value: formatMoney(totals.revenue), color: 'var(--color-metric-revenue)', soft: 'var(--color-metric-revenue-soft)' },
       { icon: <TrendingUp size={18} />, label: t('profit'), value: formatMoney(totals.profit), color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)' },
     ]
@@ -330,9 +359,9 @@ export default function InventoryPage() {
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('start')}</div><div style={{ fontSize: 13, fontWeight: 600 }}>{entry.opening}</div></div>
-          <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('remaining')}</div><div style={{ fontSize: 13, fontWeight: 600 }}>{entry.remaining}</div></div>
-          <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('sold')}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-success)' }}>{entry.sold}</div></div>
+          <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('start')}</div><div style={{ fontSize: 13, fontWeight: 600 }}>{formatQuantity(entry.opening, entry.unit)}</div></div>
+          <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('remaining')}</div><div style={{ fontSize: 13, fontWeight: 600 }}>{formatQuantity(entry.remaining, entry.unit)}</div></div>
+          <div><div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 1 }}>{t('sold')}</div><div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-success)' }}>{formatQuantity(entry.sold, entry.unit)}</div></div>
         </div>
       </div>
     )
@@ -365,20 +394,22 @@ export default function InventoryPage() {
 
           {isPastDate ? (
             <div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{selectedEntry.opening}</span></div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('remaining')}</span><span style={s.fieldValue}>{selectedEntry.remaining}</span></div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('sold')}</span><span style={s.fieldValue}>{selectedEntry.sold}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.opening, selectedEntry.unit)}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('remaining')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.remaining, selectedEntry.unit)}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('sold')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.sold, selectedEntry.unit)}</span></div>
             </div>
           ) : (
             <div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{selectedEntry.opening}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.opening, selectedEntry.unit)}</span></div>
               <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '2px 0 0' }}>{t('startQtyAuto')}</p>
               <div style={{ ...s.fieldRow, marginTop: 8 }}>
-                <span style={s.fieldLabel}>{t('remaining')}</span>
+                <span style={s.fieldLabel}>{t('remaining')} ({selectedEntry.unit})</span>
                 <input
-                  type="text" value={currentQtyInput} onChange={(e) => setCurrentQtyInput(e.target.value)}
+                  type="text"
+                  value={currentQtyInput}
+                  onChange={(e) => setCurrentQtyInput(normalizeQuantityInput(e.target.value, selectedEntry.unit))}
                   style={{ ...s.modalInput, ...(overCount ? { borderColor: 'var(--color-danger)' } : {}) }}
-                  inputMode="numeric"
+                  inputMode={isWeighed(selectedEntry.unit) ? 'decimal' : 'numeric'}
                   aria-invalid={overCount}
                 />
               </div>
@@ -388,8 +419,8 @@ export default function InventoryPage() {
               {p && (
                 <div style={s.previewBox}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{p.prevSold}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{p.newSold}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.newSold, selectedEntry.unit)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedRevenue')}</span><span style={s.fieldValue}>{formatMoney(p.newRevenue)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedProfit')}</span><span style={s.fieldValue}>{formatMoney(p.newProfit)}</span></div>
                 </div>

@@ -4,7 +4,16 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { inventoryApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { getBusinessDate } from '@/lib/businessDay'
-import { resolveSellPrice, resolveBuyPrice } from '@/lib/inventory'
+import {
+  resolveSellPrice,
+  resolveBuyPrice,
+  normalizeUnit,
+  roundQty,
+  roundMoney,
+  formatQuantity,
+  formatQuantityValue,
+} from '@/lib/inventory'
+import type { ProductUnit } from '@/lib/types'
 import dayjs from 'dayjs'
 import {
   Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
@@ -48,6 +57,7 @@ function navigateDate(period: Period, date: string, dir: -1 | 1) {
 interface ProductRankItem {
   id: string
   name: string
+  unit: ProductUnit
   sold: number
   profit: number
 }
@@ -62,11 +72,12 @@ type InventoryLineItem = {
   sellPrice?: number
   price?: number
   buyPrice?: number
-  product?: { _id?: string; id?: string; name?: string; sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number }
+  unit?: ProductUnit
+  product?: { _id?: string; id?: string; name?: string; unit?: ProductUnit; sellPrice?: number; sellingPrice?: number; buyPrice?: number; costPrice?: number }
 }
 
 function buildProductRankings(inventoryItems: InventoryLineItem[]): ProductRankItem[] {
-  const seen = new Map<string, { sold: number; profit: number; name: string }>()
+  const seen = new Map<string, { sold: number; profit: number; name: string; unit: ProductUnit }>()
   for (const item of inventoryItems) {
     const p = item.product
     if (!p) continue
@@ -74,14 +85,25 @@ function buildProductRankings(inventoryItems: InventoryLineItem[]): ProductRankI
     if (!id) continue
     const opening = item.startQuantity ?? item.openingQuantity ?? 0
     const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-    const cur = seen.get(id) ?? { sold: 0, profit: 0, name: p.name || 'Noma\'lum' }
+    const cur = seen.get(id) ?? {
+      sold: 0,
+      profit: 0,
+      name: p.name || 'Noma\'lum',
+      unit: normalizeUnit(item.unit ?? p.unit),
+    }
     cur.sold += sold
     const sp = resolveSellPrice(item, p)
     const bp = resolveBuyPrice(item, p)
     cur.profit += item.realizedProfit ?? (sold * (sp - bp))
     seen.set(id, cur)
   }
-  return Array.from(seen.entries()).map(([id, totals]) => ({ id, name: totals.name, sold: totals.sold, profit: totals.profit }))
+  return Array.from(seen.entries()).map(([id, totals]) => ({
+    id,
+    name: totals.name,
+    unit: totals.unit,
+    sold: roundQty(totals.sold),
+    profit: roundMoney(totals.profit),
+  }))
 }
 
 function computeTotals(items: InventoryLineItem[]) {
@@ -556,16 +578,18 @@ export default function StatisticsPage() {
       const name = p?.name || 'Noma\'lum'
       const buy = resolveBuyPrice(item, p)
       const sell = resolveSellPrice(item, p)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const remaining = Math.max(item.currentQuantity ?? 0, 0)
-      const sold = item.sold ?? Math.max(opening - remaining, 0)
+      const unit = normalizeUnit(item.unit ?? p?.unit)
+      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const remaining = roundQty(Math.max(item.currentQuantity ?? 0, 0))
+      const sold = item.sold ?? roundQty(Math.max(opening - remaining, 0))
       const olinganSumma = opening * buy
       const umumiySumma = opening * sell
       const sotilganSumma = (item as { revenue?: number }).revenue ?? sold * sell
       const qoldiSumma = remaining * sell
       const foyda = (sell - buy) * opening
       rows.push([
-        String(idx), name, String(buy), String(sell), String(opening), String(remaining), String(sold),
+        String(idx), name, String(buy), String(sell),
+        formatQuantityValue(opening, unit), formatQuantityValue(remaining, unit), formatQuantityValue(sold, unit),
         String(olinganSumma), String(umumiySumma), String(sotilganSumma), String(qoldiSumma), String(foyda),
       ])
       totalSoni += opening
@@ -623,7 +647,7 @@ export default function StatisticsPage() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
             <span style={{ fontSize: 12, color: unsold ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)' }}>
-              {unsold ? t('notSoldInPeriod') : `${item.sold} dona`}
+              {unsold ? t('notSoldInPeriod') : formatQuantity(item.sold, item.unit)}
             </span>
           </div>
           <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', marginTop: 6, overflow: 'hidden' }}>
