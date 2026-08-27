@@ -104,46 +104,55 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setLoading: (isLoading) => set({ isLoading }),
   hydrate: async () => {
+    const fail = () => {
+      // Any failure ends the same way: no session, and the route guards send
+      // straight to /login from the splash. Nothing is ever marked
+      // authenticated on the strength of localStorage alone.
+      setApiToken(null)
+      setRefreshToken('')
+      clearApiCache()
+      clearPersistedToken()
+      set({ token: '', refreshToken: '', user: null, isAuthenticated: false, isLoading: false })
+    }
+
+    const result = readPersistedToken()
+    if (!result?.token) {
+      set({ isLoading: false, isAuthenticated: false })
+      return
+    }
+
+    setApiToken(result.token)
+    setRefreshToken(result.refreshToken)
+
+    // The server decides whether this session is real — the cached user is
+    // never enough. Previously `isAuthenticated: true` was set here, before
+    // /me had answered, so a stale token painted the dashboard first and only
+    // bounced to /login once some later request happened to 401. The whole
+    // point of holding the splash is to make that impossible: one request,
+    // and the very next screen is either the dashboard or the login page.
+    //
+    // A network failure is treated as "no session" too. This client has no
+    // offline mode (unlike desktop/mobile, which queue writes locally), so a
+    // dashboard it cannot talk to is a worse answer than a login screen.
     try {
-      const result = readPersistedToken()
-      if (!result?.token) {
-        set({ isLoading: false })
-        return
-      }
-      setApiToken(result.token)
-      setRefreshToken(result.refreshToken)
-      // Paint immediately with the cached user, then revalidate below —
-      // avoids a blank/splash screen on every load just to wait on network.
-      applyBusinessDay(result.user)
-      set({ token: result.token, refreshToken: result.refreshToken, user: result.user ?? null, isAuthenticated: true })
+      const { data } = await authApi.getMe()
+      if (!data) { fail(); return }
 
-      // Mandatory revalidation against the server on every load — the
-      // locally cached user is only a fast first paint, never the source of
-      // truth (subscription tier, block status, business day hour, etc. may
-      // have changed elsewhere). A hard auth failure (401) is already
-      // handled by the response interceptor itself (handleSessionExpired
-      // clears storage and calls unauthorizedHandler, which redirects to
-      // /login) — so the only thing left to tolerate here is a network
-      // failure, which keeps the cached session instead of forcing a login
-      // screen while offline (matches the desktop/mobile apps).
-      try {
-        const { data } = await authApi.getMe()
-        if (data) {
-          const normalized = { ...data }
-          if (!normalized._id && (normalized as any).id) {
-            normalized._id = (normalized as any).id
-          }
-          persistUser(normalized)
-          applyBusinessDay(normalized)
-          set({ user: normalized })
-        }
-      } catch {
-        // see comment above — nothing left to do for either outcome
+      const normalized = { ...data }
+      if (!normalized._id && (normalized as any).id) {
+        normalized._id = (normalized as any).id
       }
-
-      set({ isLoading: false })
+      persistUser(normalized)
+      applyBusinessDay(normalized)
+      set({
+        token: result.token,
+        refreshToken: result.refreshToken,
+        user: normalized,
+        isAuthenticated: true,
+        isLoading: false,
+      })
     } catch {
-      set({ isLoading: false })
+      fail()
     }
   },
 }))

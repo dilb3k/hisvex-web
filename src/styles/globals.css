@@ -88,7 +88,7 @@ body {
   font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-text);
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -301,7 +301,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .product-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 11px;
   overflow: hidden;
   cursor: pointer;
   transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
@@ -309,7 +309,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   flex-direction: row;
   align-items: center;
   flex-wrap: wrap;
-  padding: 12px 14px;
+  padding: 10px 12px;
   gap: 12px;
 }
 
@@ -321,7 +321,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .product-card-img {
   width: 56px;
   height: 56px;
-  border-radius: 12px;
+  border-radius: 11px;
   flex-shrink: 0;
   background: var(--color-bg);
   display: flex;
@@ -371,9 +371,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 0;
-  border-radius: 10px;
-  font-size: 13px;
+  padding: 9px 0;
+  border-radius: 9px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   border: none;
@@ -392,8 +392,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (min-width: 720px) {
   .product-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px;
   }
 
   .product-card {
@@ -411,7 +411,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
   .product-card-img {
     width: 100%;
-    height: 175px;
+    /* Was 175px — an image well taller than everything else on the card, and
+       for the common case (no photo yet) a large empty box holding one small
+       icon. Roughly half that is enough to read a product photo at this card
+       width and lets far more of the catalogue fit on screen. */
+    height: 96px;
     border-radius: 0;
     border-bottom: 1px solid var(--color-border);
   }
@@ -421,18 +425,33 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .product-card-mid {
+    /* Stacked, not side-by-side: with the two price columns competing for the
+       same row, the name was squeezed into a narrow column and wrapped
+       mid-word ("Coca-\ACola 1L"). Giving the name the full card width and
+       putting the prices on their own line below fixes that at every card
+       size. */
     display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 11px 13px;
+    flex: 1;
   }
 
   .product-card-prices {
     flex-direction: row;
-    gap: 16px;
+    justify-content: space-between;
+    gap: 12px;
+    margin-left: 0;
+    text-align: left;
   }
 
   .product-card-actions {
+    /* Reset the mobile `flex-basis: 100%`. The card is a *column* flex
+       container here, so 100% resolves against its height — which stretched
+       the action row far past the card and pushed the green button outside
+       the rounded corner. */
+    flex-basis: auto;
     margin-top: 0;
     gap: 0;
     border-top: 1px solid var(--color-border);
@@ -440,7 +459,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
   .product-card-action {
     border-radius: 0;
-    padding: 11px 0;
+    padding: 9px 0;
+    font-size: 12.5px;
   }
 
   .product-card-action:first-child {
@@ -466,7 +486,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .page-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.3px;
   margin: 0;
@@ -499,9 +519,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 8px 14px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
@@ -644,7 +664,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 14px;
+  font-size: 13.5px;
   outline: none;
   font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;

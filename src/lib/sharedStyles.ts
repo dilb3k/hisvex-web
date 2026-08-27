@@ -10,7 +10,7 @@ export const overlay: CSSProperties = {
   zIndex: 1000,
   animation: 'fadeIn 0.2s ease',
   backdropFilter: 'blur(4px)',
-  padding: 16,
+  padding: 14,
 }
 
 export const modalContainer: CSSProperties = {
@@ -18,7 +18,7 @@ export const modalContainer: CSSProperties = {
   maxWidth: 480,
   maxHeight: '90vh',
   background: 'var(--color-bg-alt)',
-  borderRadius: 16,
+  borderRadius: 14,
   border: '1px solid var(--color-border)',
   display: 'flex',
   flexDirection: 'column',
@@ -31,7 +31,7 @@ export const modalHeader: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  padding: '18px 24px',
+  padding: '15px 20px',
   borderBottom: '1px solid var(--color-border)',
   background: 'var(--color-surface)',
   flexShrink: 0,
@@ -40,22 +40,22 @@ export const modalHeader: CSSProperties = {
 export const modalBody: CSSProperties = {
   flex: 1,
   overflowY: 'auto',
-  padding: 24,
+  padding: 20,
 }
 
 export const modalFooter: CSSProperties = {
   display: 'flex',
   justifyContent: 'flex-end',
-  gap: 10,
-  padding: '16px 24px',
+  gap: 9,
+  padding: '13px 20px',
   borderTop: '1px solid var(--color-border)',
   background: 'var(--color-surface)',
   flexShrink: 0,
 }
 
 export const inputBase: CSSProperties = {
-  padding: '11px 14px',
-  borderRadius: 10,
+  padding: '9px 12px',
+  borderRadius: 9,
   border: '1.5px solid var(--color-border)',
   background: 'var(--color-bg)',
   color: 'var(--color-text)',
@@ -83,8 +83,8 @@ export const errorText: CSSProperties = {
 }
 
 export const btnPrimary: CSSProperties = {
-  padding: '10px 20px',
-  borderRadius: 10,
+  padding: '9px 17px',
+  borderRadius: 9,
   border: 'none',
   background: 'var(--color-primary)',
   color: '#fff',
@@ -96,8 +96,8 @@ export const btnPrimary: CSSProperties = {
 }
 
 export const btnSecondary: CSSProperties = {
-  padding: '10px 20px',
-  borderRadius: 10,
+  padding: '9px 17px',
+  borderRadius: 9,
   border: '1.5px solid var(--color-border)',
   background: 'transparent',
   color: 'var(--color-text)',
@@ -108,8 +108,8 @@ export const btnSecondary: CSSProperties = {
 }
 
 export const btnDanger: CSSProperties = {
-  padding: '10px 20px',
-  borderRadius: 10,
+  padding: '9px 17px',
+  borderRadius: 9,
   border: 'none',
   background: 'var(--color-danger)',
   color: '#fff',
@@ -125,18 +125,18 @@ export const btnDanger: CSSProperties = {
 export const kpiCard: CSSProperties = {
   background: 'var(--color-surface)',
   borderRadius: 14,
-  padding: 16,
+  padding: 14,
   border: '1px solid var(--color-border)',
   display: 'flex',
   alignItems: 'center',
-  gap: 14,
+  gap: 12,
   boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
 }
 
 export const kpiIcon: CSSProperties = {
   width: 42,
   height: 42,
-  borderRadius: 12,
+  borderRadius: 11,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

@@ -168,7 +168,11 @@ export default function SalesPage() {
     let target = subtotal
     if (discountMode === 'amount') target = subtotal - Math.min(raw, subtotal)
     else if (discountMode === 'percent') target = subtotal * (1 - Math.min(raw, 100) / 100)
-    else if (discountMode === 'total') target = Math.min(raw, subtotal)
+    // An empty field means "not stated yet", not "charge nothing". For the
+    // amount/percent modes zero is already the no-op, but in total mode zero
+    // would mean giving the whole cart away — so switching to this mode with
+    // an untouched field collapsed the total to 0.
+    else if (discountMode === 'total') target = discountInput.trim() ? Math.min(raw, subtotal) : subtotal
     target = roundMoney(Math.max(target, 0))
 
     // Distributed exactly, so the amount the cashier sees is the amount the
@@ -525,7 +529,7 @@ export default function SalesPage() {
             </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sellableItems.map(item => {
               const product = item.product as Product | undefined
               const cartQty = cart[item.productId] || 0
@@ -548,11 +552,11 @@ export default function SalesPage() {
                     overflow: 'hidden',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '18px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '12px 14px' }}>
                     <div style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 12,
+                      width: 54,
+                      height: 54,
+                      borderRadius: 10,
                       background: 'var(--color-bg)',
                       display: 'flex',
                       alignItems: 'center',
@@ -567,23 +571,23 @@ export default function SalesPage() {
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
-                        <Package size={28} style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }} />
+                        <Package size={22} style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }} />
                       )}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{
-                        fontSize: 17,
+                        fontSize: 14.5,
                         fontWeight: 600,
                         color: 'var(--color-text)',
-                        marginBottom: 3,
+                        marginBottom: 2,
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                       }}>
                         {product?.name || 'N/A'}
                       </p>
-                      <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <p style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span>{t('sellPrice')}: {formatMoney(unitPrice)}</span>
                         {isOverridden && (
                           <span style={{ textDecoration: 'line-through', opacity: 0.65, fontSize: 12.5 }}>
@@ -591,7 +595,7 @@ export default function SalesPage() {
                           </span>
                         )}
                       </p>
-                      <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)' }}>
+                      <p style={{ fontSize: 12.5, color: 'var(--color-text-secondary)' }}>
                         {/* Live-adjusted stock: subtract what's already in the
                             cart for this sale so the shown "qoldiq" reflects
                             what will actually remain after checkout (e.g.
@@ -611,9 +615,9 @@ export default function SalesPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 44,
-                          height: 44,
-                          borderRadius: 10,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 9,
                           border: `1px solid ${cartQty > 0 ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: cartQty > 0 ? 'var(--color-primary-soft)' : 'transparent',
                           color: cartQty > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
@@ -622,7 +626,7 @@ export default function SalesPage() {
                           transition: 'all 0.15s',
                         }}
                       >
-                        <Minus size={20} />
+                        <Minus size={17} />
                       </button>
                       {/* Weighed goods get a real input instead of only a
                           stepper: reaching 1.75 kg by tapping +0.1 seventeen
@@ -648,9 +652,9 @@ export default function SalesPage() {
                           }}
                           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                           style={{
-                            width: 68,
+                            width: 58,
                             textAlign: 'center',
-                            padding: '10px 4px',
+                            padding: '8px 4px',
                             borderRadius: 8,
                             border: '1px solid var(--color-border)',
                             background: 'var(--color-bg)',
@@ -664,10 +668,10 @@ export default function SalesPage() {
                         />
                       ) : (
                         <span style={{
-                          fontSize: 18,
+                          fontSize: 15.5,
                           fontWeight: 700,
                           color: 'var(--color-text)',
-                          minWidth: 32,
+                          minWidth: 28,
                           textAlign: 'center',
                           fontVariantNumeric: 'tabular-nums',
                         }}>
@@ -689,9 +693,9 @@ export default function SalesPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 44,
-                          height: 44,
-                          borderRadius: 10,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 9,
                           border: `1px solid ${canAdd ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: canAdd ? 'var(--color-primary-soft)' : 'transparent',
                           color: canAdd ? 'var(--color-primary)' : 'var(--color-text-secondary)',
@@ -700,14 +704,14 @@ export default function SalesPage() {
                           transition: 'all 0.15s',
                         }}
                       >
-                        <Plus size={20} />
+                        <Plus size={17} />
                       </button>
                     </div>
                   </div>
 
                   {isActive && (
                     <div style={{
-                      padding: '10px 14px',
+                      padding: '8px 14px',
                       borderTop: '1px solid var(--color-border)',
                       background: 'var(--color-primary-soft)',
                       display: 'flex',
@@ -718,7 +722,10 @@ export default function SalesPage() {
                       {/* Per-line price edit — the customer who negotiates a
                           different price for one item is the common case; a
                           cart-wide discount is the separate control below. */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 190px', minWidth: 170 }}>
+                      {/* Compact, not full-width: the price is a short number,
+                          and letting the field stretch the whole row made the
+                          line total look detached from it. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 1 auto' }}>
                         <Tag size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
                         <input
                           type="text"
@@ -733,7 +740,8 @@ export default function SalesPage() {
                           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                           style={{
                             ...smallInput,
-                            flex: 1,
+                            width: 108,
+                            textAlign: 'right',
                             borderColor: isOverridden ? 'var(--color-primary)' : 'var(--color-border)',
                             color: isOverridden ? 'var(--color-primary)' : 'var(--color-text)',
                           }}
@@ -891,7 +899,12 @@ export default function SalesPage() {
                 return (
                   <button
                     key={mode}
-                    onClick={() => { setDiscountMode(mode); if (mode === 'none') setDiscountInput('') }}
+                    onClick={() => {
+                      setDiscountMode(mode)
+                      // Seeded with the current total so the field starts from
+                      // what is actually owed rather than empty.
+                      setDiscountInput(mode === 'total' ? formatInputAmount(String(totals.total)) : '')
+                    }}
                     style={{
                       padding: '6px 12px',
                       borderRadius: 7,
@@ -937,9 +950,9 @@ export default function SalesPage() {
             pairs that sat visually quieter than the buttons below them
             despite being the most important thing to see mid-sale. */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-          <div style={{ ...kpiCard, flex: 1.4, padding: 12, gap: 10 }}>
-            <div style={{ ...kpiIcon, width: 34, height: 34, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}>
-              <Wallet size={17} />
+          <div style={{ ...kpiCard, flex: 1.4, padding: 10, gap: 9 }}>
+            <div style={{ ...kpiIcon, width: 30, height: 30, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}>
+              <Wallet size={15} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}</div>
@@ -947,6 +960,7 @@ export default function SalesPage() {
                   berdi" — the cashier states the money taken and everything
                   else (per-line amounts, the discount, the profit) follows from
                   it, rather than making them work backwards to a percentage. */}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
               <input
                 type="text"
                 inputMode="numeric"
@@ -967,14 +981,19 @@ export default function SalesPage() {
                     setDiscountInput(formatInputAmount(String(totals.total)))
                   }
                 }}
+                size={Math.max(
+                  (discountMode === 'total' ? discountInput : formatInputAmount(String(totals.total))).length,
+                  1,
+                )}
                 style={{
-                  width: '100%',
+                  width: 'auto',
+                  minWidth: 0,
                   padding: 0,
                   border: 'none',
                   borderBottom: `1px dashed ${totalPieces === 0 ? 'transparent' : 'var(--color-border)'}`,
                   background: 'transparent',
                   outline: 'none',
-                  fontSize: 19,
+                  fontSize: 17,
                   fontWeight: 800,
                   color: 'var(--color-metric-revenue)',
                   fontVariantNumeric: 'tabular-nums',
@@ -982,6 +1001,11 @@ export default function SalesPage() {
                   fontFamily: 'inherit',
                 }}
               />
+              <span style={{
+                fontSize: 12, fontWeight: 700, flexShrink: 0,
+                color: 'var(--color-metric-revenue)', opacity: 0.75,
+              }}>so&apos;m</span>
+              </div>
               {/* Only shown when money was actually given away, so the normal
                   sale keeps a single clean number. */}
               {hasDiscount && (
@@ -997,14 +1021,14 @@ export default function SalesPage() {
               )}
             </div>
           </div>
-          <div style={{ ...kpiCard, flex: 1, padding: 12, gap: 10 }}>
-            <div style={{ ...kpiIcon, width: 34, height: 34, background: 'var(--color-metric-qty-soft)', color: 'var(--color-metric-qty)' }}>
-              <ShoppingCart size={17} />
+          <div style={{ ...kpiCard, flex: 1, padding: 10, gap: 9 }}>
+            <div style={{ ...kpiIcon, width: 30, height: 30, background: 'var(--color-metric-qty-soft)', color: 'var(--color-metric-qty)' }}>
+              <ShoppingCart size={15} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('soldPieces')}</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('sold')}</div>
               <div style={{
-                fontSize: 19,
+                fontSize: 17,
                 fontWeight: 800,
                 color: 'var(--color-metric-qty)',
                 fontVariantNumeric: 'tabular-nums',

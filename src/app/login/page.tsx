@@ -9,30 +9,33 @@ import { t } from '@/lib/i18n'
 import { formatPhone } from '@/lib/formatters'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 
+// Every value here is a theme token, not a literal. The page used to carry
+// its own violet dark palette (#070512, rgba(167,139,250,…)), which is why it
+// looked like a different product from the rest of the app — and why it stayed
+// dark even when the user had chosen the light theme.
 const C = {
-  bg: '#070512',
-  bgMid: '#0F0A2E',
-  bgDeep: '#0C0820',
-  primary: '#7C3AED',
-  accent: '#A78BFA',
-  accentDim: 'rgba(167,139,250,0.65)',
-  surface: 'rgba(255,255,255,0.04)',
-  border: 'rgba(167,139,250,0.15)',
-  borderFocus: '#7C3AED',
-  text: 'rgba(255,255,255,0.9)',
-  textSecondary: 'rgba(167,139,250,0.65)',
-  textTertiary: 'rgba(167,139,250,0.3)',
-  danger: '#EF4444',
-  dangerBg: 'rgba(239,68,68,0.1)',
-  dangerBorder: 'rgba(239,68,68,0.25)',
+  bg: 'var(--color-bg)',
+  surface: 'var(--color-surface)',
+  primary: 'var(--color-primary)',
+  primaryHover: 'var(--color-primary-hover)',
+  primarySoft: 'var(--color-primary-soft)',
+  accent: 'var(--color-primary)',
+  border: 'var(--color-border)',
+  borderFocus: 'var(--color-primary)',
+  text: 'var(--color-text)',
+  textSecondary: 'var(--color-text-secondary)',
+  textTertiary: 'var(--color-text-tertiary)',
+  danger: 'var(--color-danger)',
+  dangerBg: 'var(--color-danger-soft)',
+  dangerBorder: 'var(--color-danger)',
 }
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: 13,
+  fontSize: 12.5,
   fontWeight: 600,
   color: C.textSecondary,
-  marginBottom: 6,
+  marginBottom: 5,
   marginLeft: 2,
 }
 
@@ -145,13 +148,13 @@ export default function LoginPage() {
 
   const inputStyle = (field: string): React.CSSProperties => ({
     width: '100%',
-    padding: 12,
-    borderRadius: 10,
+    padding: '10px 12px',
+    borderRadius: 9,
     border: '1.5px solid',
     borderColor: focusedField === field ? C.borderFocus : C.border,
     background: C.surface,
     color: C.text,
-    fontSize: 15,
+    fontSize: 14,
     outline: 'none',
     boxSizing: 'border-box',
     transition: 'border-color 0.15s',
@@ -161,56 +164,52 @@ export default function LoginPage() {
     <div style={{
       minHeight: '100dvh',
       display: 'flex',
-      alignItems: 'center',
+      // Top-anchored, not centred: centring the whole column pushed the logo
+      // into the middle of a tall screen. `flex-start` with a measured top
+      // padding keeps the mark high and the form above the fold.
+      alignItems: 'flex-start',
       justifyContent: 'center',
       background: C.bg,
-      padding: 'clamp(16px, 5vw, 32px)',
+      padding: 'clamp(28px, 7vh, 64px) clamp(16px, 5vw, 32px) clamp(24px, 6vh, 48px)',
       position: 'relative',
       overflow: 'hidden',
     }}>
-      <div style={{
-        position: 'fixed', inset: 0,
-        background: `linear-gradient(180deg, ${C.bg} 0%, ${C.bgMid} 30%, ${C.bgDeep} 65%, ${C.bg} 100%)`,
-        zIndex: 0,
-      }} />
+      {/* Ambient light only — the page background itself is the theme's, so
+          this reads the same in light and dark instead of forcing a dark
+          gradient over a light surface. */}
       <div style={{
         position: 'fixed', width: 600, height: 600, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 70%)',
-        top: '-200px', right: '-200px', zIndex: 0,
+        background: 'radial-gradient(circle, var(--color-primary-soft) 0%, transparent 70%)',
+        top: '-220px', right: '-200px', zIndex: 0, pointerEvents: 'none',
       }} />
       <div style={{
-        position: 'fixed', width: 500, height: 500, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 70%)',
-        bottom: '-150px', left: '-150px', zIndex: 0,
-      }} />
-      <div style={{
-        position: 'fixed', width: 720, height: 720, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.07) 0%, rgba(124,58,237,0.02) 55%, transparent 70%)',
-        top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 0,
+        position: 'fixed', width: 520, height: 520, borderRadius: '50%',
+        background: 'radial-gradient(circle, var(--color-primary-soft) 0%, transparent 70%)',
+        bottom: '-180px', left: '-160px', zIndex: 0, pointerEvents: 'none', opacity: 0.7,
       }} />
 
-      <div style={{ width: '100%', maxWidth: 400, position: 'relative', zIndex: 1 }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+      <div style={{ width: '100%', maxWidth: 360, position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{
-            width: 88, height: 88, borderRadius: 22,
-            overflow: 'hidden', margin: '0 auto 22px',
-            boxShadow: '0 12px 40px rgba(124,58,237,0.35)',
+            width: 64, height: 64, borderRadius: 18,
+            overflow: 'hidden', margin: '0 auto 14px',
+            boxShadow: '0 8px 26px rgba(124,58,237,0.28)',
           }}>
             <Image
               src="/logo-256.png" alt="Hisvex"
-              width={88} height={88}
+              width={64} height={64}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               priority
             />
           </div>
           <h1 style={{
-            margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
-            background: 'linear-gradient(135deg, #A78BFA 0%, #7C3AED 60%, #6D28D9 100%)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
+            display: 'flex', justifyContent: 'center',
           }}>
-            Hisvex
+            <span style={{ color: 'var(--color-primary)' }}>His</span>
+            <span style={{ color: C.text }}>vex</span>
           </h1>
-          <p style={{ margin: '8px 0 0', fontSize: 14, color: C.textSecondary, letterSpacing: 0.4 }}>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: C.textSecondary, letterSpacing: 0.3 }}>
             {phoneVerifyStep
               ? t('verifyPhone')
               : isLoginMode ? t('signInToSystem') : t('createAccount')}
@@ -218,8 +217,8 @@ export default function LoginPage() {
         </div>
 
         <div style={{
-          borderRadius: 20, border: `1px solid ${C.border}`,
-          background: 'rgba(255,255,255,0.03)', padding: 24,
+          borderRadius: 16, border: `1px solid ${C.border}`,
+          background: C.surface, padding: 20,
         }}>
           {phoneVerifyStep ? (
             <form onSubmit={(e) => { e.preventDefault(); handlePhoneVerify() }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -267,9 +266,9 @@ export default function LoginPage() {
               <button
                 type="submit" disabled={loading}
                 style={{
-                  width: '100%', padding: 16, borderRadius: 10, border: 'none',
+                  width: '100%', padding: '12px 16px', borderRadius: 9, border: 'none',
                   background: C.primary, color: '#fff',
-                  fontSize: 15, fontWeight: 700,
+                  fontSize: 14, fontWeight: 700,
                   cursor: loading ? 'not-allowed' : 'pointer',
                   opacity: loading ? 0.7 : 1, marginTop: 4,
                   transition: 'background 0.15s',
@@ -283,9 +282,9 @@ export default function LoginPage() {
                 onClick={() => { setPhoneVerifyStep(false); setError('') }}
                 disabled={loading}
                 style={{
-                  width: '100%', padding: 14, borderRadius: 10,
+                  width: '100%', padding: '11px 16px', borderRadius: 9,
                   border: `1px solid ${C.border}`, background: 'none',
-                  color: C.textSecondary, fontSize: 15, fontWeight: 600,
+                  color: C.textSecondary, fontSize: 14, fontWeight: 600,
                   cursor: loading ? 'not-allowed' : 'pointer',
                   opacity: loading ? 0.7 : 1,
                 }}
@@ -293,7 +292,7 @@ export default function LoginPage() {
             </form>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
                 <button
                   type="button"
                   onClick={() => switchMode('login')}
@@ -303,7 +302,7 @@ export default function LoginPage() {
                   }}
                 >
                   <span style={{
-                    fontSize: 16, fontWeight: isLoginMode ? 700 : 600,
+                    fontSize: 14.5, fontWeight: isLoginMode ? 700 : 600,
                     color: isLoginMode ? C.primary : C.textTertiary,
                   }}>{t('signIn')}</span>
                 </button>
@@ -316,7 +315,7 @@ export default function LoginPage() {
                   }}
                 >
                   <span style={{
-                    fontSize: 16, fontWeight: !isLoginMode ? 700 : 600,
+                    fontSize: 14.5, fontWeight: !isLoginMode ? 700 : 600,
                     color: !isLoginMode ? C.primary : C.textTertiary,
                   }}>{t('signUp')}</span>
                 </button>
@@ -416,11 +415,11 @@ export default function LoginPage() {
                             (esp. on Windows) renders its own solid background and
                             ignores inherited alpha, which left rgba(255,255,255,0.9)
                             text unreadable on the OS's white dropdown. */}
-                        <option value="" disabled style={{ background: C.bgMid, color: '#FFFFFF' }}>
+                        <option value="" disabled style={{ background: C.surface, color: C.text }}>
                           {t('businessDayStartHourPlaceholder')}
                         </option>
                         {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-                          <option key={h} value={h} style={{ background: C.bgMid, color: '#FFFFFF' }}>
+                          <option key={h} value={h} style={{ background: C.surface, color: C.text }}>
                             {String(h).padStart(2, '0')}:00
                           </option>
                         ))}
@@ -432,7 +431,7 @@ export default function LoginPage() {
                 <button
                   type="submit" disabled={loading}
                   style={{
-                    width: '100%', padding: 16, borderRadius: 10, border: 'none',
+                    width: '100%', padding: '12px 16px', borderRadius: 9, border: 'none',
                     background: C.primary, color: '#fff',
                     fontSize: 15, fontWeight: 700,
                     cursor: loading ? 'not-allowed' : 'pointer',
@@ -458,7 +457,7 @@ export default function LoginPage() {
                 onClick={() => switchMode(isLoginMode ? 'register' : 'login')}
                 style={{
                   background: 'none', border: 'none', color: C.primary,
-                  cursor: 'pointer', fontSize: 15, fontWeight: 700, padding: 0,
+                  cursor: 'pointer', fontSize: 13.5, fontWeight: 700, padding: 0,
                 }}
               >{isLoginMode ? t('signUpHere') : t('signInHere')}</button>
             </>
@@ -472,7 +471,7 @@ export default function LoginPage() {
             }}
           >
             <span style={{ fontSize: 13, color: C.textSecondary }}>{t('contactAdminLink')}</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: C.accent }}>{t('contactAdminTelegram')}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: C.accent }}>{t('contactAdminTelegram')}</span>
           </button>
         </div>
       </div>
@@ -490,13 +489,13 @@ export default function LoginPage() {
             onClick={(e) => e.stopPropagation()}
             style={{
               width: '100%', maxWidth: 420,
-              borderRadius: 20,
+              borderRadius: 16,
               border: `1px solid ${C.border}`,
-              background: C.bgMid,
-              padding: 24,
+              background: C.surface,
+              padding: 22,
             }}
           >
-            <p style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700, color: C.accent }}>
+            <p style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700, color: C.accent }}>
               {t('businessDayStartHelpTitle')}
             </p>
             <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
@@ -506,8 +505,8 @@ export default function LoginPage() {
               type="button"
               onClick={() => setShowBusinessDayHelp(false)}
               style={{
-                width: '100%', marginTop: 20, padding: 14, borderRadius: 10, border: 'none',
-                background: C.primary, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                width: '100%', marginTop: 18, padding: '11px 16px', borderRadius: 9, border: 'none',
+                background: C.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}
             >{t('gotIt')}</button>
           </div>
