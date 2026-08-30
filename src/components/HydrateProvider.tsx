@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Fragment, useEffect, useSyncExternalStore } from 'react'
 import { useAuthStore } from '@/lib/authStore'
 import { setUnauthorizedHandler, setTokensRefreshedHandler } from '@/lib/api'
-import { setLanguage, t } from '@/lib/i18n'
+import { getLanguage, getServerLanguage, subscribeLanguage } from '@/lib/i18n'
 import { initBusinessDay } from '@/lib/businessDay'
 import { AppSplash } from '@/components/AppSplash'
 
@@ -12,13 +12,16 @@ export function HydrateProvider({ children }: { children: React.ReactNode }) {
   const logout = useAuthStore((s) => s.logout)
   const isLoading = useAuthStore((s) => s.isLoading)
 
+  // Language is restored inside i18n.ts at module init (before the first
+  // render), not here — a stored 'ru' applied in an effect would paint the
+  // whole app in Uzbek first. This subscription is what makes a *switch*
+  // take effect app-wide: `t()` is a plain function, so nothing outside the
+  // Settings screen re-rendered on a change until now.
+  const language = useSyncExternalStore(subscribeLanguage, getLanguage, getServerLanguage)
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('hisvex_theme') || 'dark'
     document.documentElement.setAttribute('data-theme', savedTheme)
-    const savedLanguage = localStorage.getItem('hisvex_language')
-    if (savedLanguage === 'uz' || savedLanguage === 'ru') {
-      setLanguage(savedLanguage)
-    }
     initBusinessDay()
     hydrate()
   }, [hydrate])
@@ -43,5 +46,9 @@ export function HydrateProvider({ children }: { children: React.ReactNode }) {
 
   if (isLoading) return <AppSplash />
 
-  return <>{children}</>
+  // Keyed on the language so a switch remounts the tree: `t()` results are
+  // read during render all over the app (including inside useMemo bodies and
+  // style objects), and there is no dependency React could track to
+  // invalidate them one by one.
+  return <Fragment key={language}>{children}</Fragment>
 }

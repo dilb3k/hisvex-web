@@ -247,6 +247,7 @@ export const translations = {
     netProfit: 'Sof foyda',
     totalRevenueLabel: 'Jami tushum',
     soldPieces: 'Sotilgan dona',
+    sellingNow: 'Sotuvda (qoldiq)',
     marginPercent: 'Marja foizi',
     topProductsLabel: 'Top mahsulotlar',
     leastSold: 'Kam sotilgan',
@@ -632,6 +633,7 @@ export const translations = {
     netProfit: 'Чистая прибыль',
     totalRevenueLabel: 'Общий доход',
     soldPieces: 'Продано шт.',
+    sellingNow: 'В продаже (остаток)',
     marginPercent: 'Маржа %',
     topProductsLabel: 'Топ товары',
     leastSold: 'Мало продано',
@@ -794,12 +796,49 @@ export const translations = {
 
 export type TranslationKey = keyof typeof translations.uz
 
-let currentLanguage: Language = 'uz'
+const LANGUAGE_STORAGE_KEY = 'hisvex_language'
 
-export const getLanguage = () => currentLanguage
+function readStoredLanguage(): Language {
+  if (typeof window === 'undefined') return 'uz'
+  try {
+    const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    return saved === 'ru' || saved === 'uz' ? saved : 'uz'
+  } catch {
+    return 'uz'
+  }
+}
+
+// Read at module init rather than in a mount effect: `t()` is called during the
+// very first render of every screen, so a language restored one tick later
+// would paint the whole app in Uzbek first and only then flip to Russian.
+let currentLanguage: Language = readStoredLanguage()
+
+/**
+ * `t()` is a plain function reading this module-level variable, so React has no
+ * way to know the answer changed — switching the language in Settings only
+ * re-rendered Settings itself (it holds its own `useState`), while the sidebar,
+ * the tab bar and every other screen kept the old language until a full page
+ * reload. These listeners are what HydrateProvider subscribes to so the tree
+ * can be re-rendered on a switch.
+ */
+const languageListeners = new Set<() => void>()
+
+export const subscribeLanguage = (listener: () => void) => {
+  languageListeners.add(listener)
+  return () => { languageListeners.delete(listener) }
+}
+
+export const getLanguage = (): Language => currentLanguage
+
+// Server render has no localStorage; always report the default there so the
+// markup React produces on the server matches the first client render.
+export const getServerLanguage = (): Language => 'uz'
 
 export const setLanguage = (lang: Language) => {
+  if (lang === currentLanguage) return
   currentLanguage = lang
+  try { window.localStorage.setItem(LANGUAGE_STORAGE_KEY, lang) } catch {}
+  languageListeners.forEach((listener) => listener())
 }
 
 export const t = (key: TranslationKey, params?: Record<string, string | number>): string => {

@@ -6,6 +6,7 @@ import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '@/lib/api'
 import {
+  compareProducts,
   resolveSellPrice,
   resolveBuyPrice,
   DEFAULT_UNIT,
@@ -132,7 +133,7 @@ function ProductsSkeleton() {
 export default function ProductsPage() {
   const router = useRouter()
   const products = useAppStore((s) => s.products)
-  const loadProducts = useAppStore((s) => s.loadProducts)
+  const refreshAll = useAppStore((s) => s.refreshAll)
   const showToast = useAppStore((s) => s.showToast)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -183,12 +184,16 @@ export default function ProductsPage() {
   // via a persistent ErrorBanner + retry, matching the Inventory/Sales
   // redesign convention. Writes the result into the shared store so other
   // consumers (barcode-conflict check, Sales/Inventory screens) stay in sync.
+  // Only the first load shows the skeleton; refreshes triggered by a sale or
+  // by an edit elsewhere repaint in place.
+  const hasLoadedOnce = useRef(false)
   const fetchProducts = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedOnce.current) setLoading(true)
     setLoadError(false)
     try {
       const { data } = await productsApi.getAll()
       useAppStore.setState({ products: data })
+      hasLoadedOnce.current = true
     } catch (err) {
       console.error('Load products error:', err)
       setLoadError(true)
@@ -197,9 +202,16 @@ export default function ProductsPage() {
     }
   }, [])
 
+  // refreshKey is bumped by refreshAll() after any mutation anywhere in the
+  // app — recording a sale, editing stock on Inventory — so the quantities on
+  // this screen follow immediately instead of staying on the pre-sale figures
+  // until the page is reloaded by hand.
+  const refreshKey = useAppStore((s) => s.refreshKey)
+
   useEffect(() => {
     fetchProducts()
-  }, [fetchProducts])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchProducts, refreshKey])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -209,11 +221,11 @@ export default function ProductsPage() {
   const sortedProducts = useMemo(() => {
     return [...products]
       .filter((p) => !debouncedSearch || p.name.toLowerCase().includes(debouncedSearch.toLowerCase()))
-      .sort((a, b) => {
-        const ia = a.displayIndex ?? 0
-        const ib = b.displayIndex ?? 0
-        return ia !== ib ? ia - ib : a.name.localeCompare(b.name)
-      })
+      // Shared comparator — this screen used to treat a missing displayIndex
+      // as 0 (sorting those products first) while Inventory treated it as 999
+      // (sorting them last), so the same catalog read in a different order on
+      // each screen.
+      .sort(compareProducts)
   }, [products, debouncedSearch])
 
   // KPI row totals (item 2) — computed over the full catalog, independent of
@@ -385,7 +397,7 @@ export default function ProductsPage() {
       }
       closeProductModal()
       clearApiCache()
-      await loadProducts(true)
+      await refreshAll()
       return true
     } catch (err: unknown) {
       console.error('Product save error:', err)
@@ -407,7 +419,7 @@ export default function ProductsPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [form, editingProduct, loadProducts, products, showToast])
+  }, [form, editingProduct, refreshAll, products, showToast])
 
   // Actual delete API call, split out from the click-handler below so it can
   // be invoked either directly (no blockCode set) or after a successful PIN
@@ -421,7 +433,7 @@ export default function ProductsPage() {
       setShowDeleteModal(false); setDeleteTarget(null)
       closeProductModal()
       clearApiCache()
-      await loadProducts(true)
+      await refreshAll()
     } catch (err: unknown) {
       console.error('Delete error:', err)
       // Real bug fix (item 3): a failed delete used to look identical to a
@@ -430,7 +442,7 @@ export default function ProductsPage() {
     } finally {
       setIsDeleting(false)
     }
-  }, [deleteTarget, loadProducts, showToast])
+  }, [deleteTarget, refreshAll, showToast])
 
   const handleSave = async () => {
     if (!validate()) return
@@ -481,7 +493,7 @@ export default function ProductsPage() {
       await productsApi.update(restockProduct._id, { quantity: roundQty(currentQty + qtyToAdd), unit })
       closeRestockModal()
       clearApiCache()
-      await loadProducts(true)
+      await refreshAll()
     } catch (err: unknown) {
       console.error('Restock error:', err)
       // Real bug fix (item 3): a failed restock used to look identical to a

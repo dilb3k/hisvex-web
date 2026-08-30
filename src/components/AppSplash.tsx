@@ -78,10 +78,19 @@ export function AppSplash() {
           <span style={{ color: '#FFFFFF' }}>vex</span>
         </div>
 
-        <div style={{
-          fontSize: 13, letterSpacing: 0.6, color: 'rgba(196,181,253,0.62)',
-          animation: 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both',
-        }}>
+        {/* The only translated string that exists in the statically exported
+            HTML (everything else renders after auth hydration finishes), so
+            it is also the only one that can differ between the prerendered
+            markup — always Uzbek — and a Russian user's first client render.
+            React patches it correctly either way; this just stops it being
+            reported as a hydration error in the console. */}
+        <div
+          suppressHydrationWarning
+          style={{
+            fontSize: 13, letterSpacing: 0.6, color: 'rgba(196,181,253,0.62)',
+            animation: 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both',
+          }}
+        >
           {t('splashTagline')}
         </div>
 

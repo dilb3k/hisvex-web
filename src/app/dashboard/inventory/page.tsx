@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { getBusinessDate, isPastBusinessDate, isTodayBusinessDate, isFutureBusinessDate } from '@/lib/businessDay'
 import {
+  compareProducts,
   resolveSellPrice,
   resolveBuyPrice,
   clampCurrentQuantity,
@@ -125,14 +126,18 @@ export default function InventoryPage() {
     loadProducts()
   }, [loadProducts])
 
+  // Only the first load of a given date shows the skeleton; refreshes driven
+  // by refreshKey (a sale on the Sales screen, an edit on Products) repaint in
+  // place rather than flashing the whole screen back to placeholders.
+  const loadedDateRef = useRef<string | null>(null)
   const fetchData = useCallback(() => {
     if (isFutureDate) { setItems([]); setLoading(false); return () => {} }
     let cancelled = false
-    setLoading(true)
+    if (loadedDateRef.current !== selectedDate) setLoading(true)
     setLoadError(false)
     inventoryApi.getByDate(selectedDate, selectedDate)
       .then(({ data }) => {
-        if (!cancelled) setItems(data?.items ?? [])
+        if (!cancelled) { setItems(data?.items ?? []); loadedDateRef.current = selectedDate }
       })
       .catch(() => {
         if (!cancelled) { setItems([]); setLoadError(true) }
@@ -174,11 +179,9 @@ export default function InventoryPage() {
         stockSellValue, unitProfit, sellPrice, buyPrice,
       })
     }
-    result.sort((a, b) => {
-      const ia = a.product.displayIndex ?? 999
-      const ib = b.product.displayIndex ?? 999
-      return ia !== ib ? ia - ib : (a.product.name || '').localeCompare(b.product.name || '')
-    })
+    // Shared comparator — Products, Inventory and Sales all order the catalog
+    // identically now (see compareProducts in lib/inventory.ts).
+    result.sort((a, b) => compareProducts(a.product, b.product))
     return result
   }, [items, storeProducts])
 

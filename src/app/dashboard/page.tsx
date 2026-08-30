@@ -17,7 +17,7 @@ import type { ProductUnit } from '@/lib/types'
 import dayjs from 'dayjs'
 import {
   Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
-  Wallet, ShoppingCart, Percent, Package, BarChart3, Archive, Trophy,
+  Wallet, ShoppingCart, Package, BarChart3, Archive, Trophy,
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { formatMoney, kpiCard, kpiIcon } from '@/lib/sharedStyles'
@@ -746,7 +746,7 @@ export default function StatisticsPage() {
               {formatMoney(totals.revenue)}
             </div>
             <div style={{ position: 'relative', display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-              <span style={heroChip}>{t('soldPieces')}: {totals.sold}</span>
+              <span style={heroChip}>{t('soldPieces')}: {formatQuantityValue(totals.sold, 'kg')}</span>
               <span style={heroChip}>{t('marginPercent')}: {margin}%</span>
             </div>
           </div>
@@ -761,18 +761,47 @@ export default function StatisticsPage() {
             loading={chartIsLoading}
           />
 
-          {/* KPI cards — realized numbers only, solid-filled cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {/* KPI cards — realized numbers only, solid-filled cards.
+              Profit alone did not answer the two questions actually asked of
+              this screen every day: how much has been sold, and how much is
+              still on the shelf waiting to sell. Both now sit next to it,
+              each card carrying the money figure under the quantity so the
+              pieces and the so'm are never read apart. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
-              { icon: <TrendingUp size={18} />, label: t('netProfit'), value: formatMoney(totals.profit), color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)' },
-              { icon: <ShoppingCart size={18} />, label: t('soldPieces'), value: String(totals.sold), color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)' },
-              { icon: <Percent size={18} />, label: t('marginPercent'), value: `${margin}%`, color: 'var(--color-violet)', soft: 'rgba(139,92,246,0.14)' },
+              {
+                icon: <Wallet size={18} />, label: t('soldValue'),
+                value: formatMoney(totals.revenue),
+                sub: overallTotals ? `${t('soldPieces')}: ${formatQuantityValue(overallTotals.soldItems, 'kg')}` : undefined,
+                color: 'var(--color-metric-revenue)', soft: 'var(--color-metric-revenue-soft)',
+              },
+              {
+                icon: <TrendingUp size={18} />, label: t('netProfit'),
+                value: formatMoney(totals.profit),
+                sub: `${t('marginPercent')}: ${margin}%`,
+                color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)',
+              },
+              {
+                icon: <ShoppingCart size={18} />, label: t('soldPieces'),
+                value: formatQuantityValue(totals.sold, 'kg'),
+                sub: `${t('soldValue')}: ${formatMoney(totals.revenue)}`,
+                color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)',
+              },
+              {
+                icon: <Archive size={18} />, label: t('sellingNow'),
+                value: overallTotals ? formatQuantityValue(overallTotals.remainingItems, 'kg') : '0',
+                sub: overallTotals ? `${t('remainingStockValue')}: ${formatMoney(overallTotals.stockValue)}` : undefined,
+                color: 'var(--color-violet)', soft: 'rgba(139,92,246,0.14)',
+              },
             ].map((item, i) => (
               <div key={i} style={kpiCard}>
                 <div style={{ ...kpiIcon, background: item.soft, color: item.color }}>{item.icon}</div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{item.label}</div>
-                  <div style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3 }}>{item.value}</div>
+                  <div style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3, overflowWrap: 'anywhere' }}>{item.value}</div>
+                  {item.sub && (
+                    <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 3, overflowWrap: 'anywhere' }}>{item.sub}</div>
+                  )}
                 </div>
               </div>
             ))}

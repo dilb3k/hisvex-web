@@ -5,6 +5,7 @@ import { useAppStore } from '@/lib/appStore'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { getBusinessDate } from '@/lib/businessDay'
 import {
+  compareProducts,
   resolveSellPrice,
   normalizeUnit,
   isWeighed,
@@ -16,17 +17,14 @@ import {
   formatQuantityValue,
   normalizeQuantityInput,
   parseQuantityInput,
-  distributeTotal,
 } from '@/lib/inventory'
 import { formatMoney, formatInputAmount, parseFormattedAmount, kpiCard, kpiIcon } from '@/lib/sharedStyles'
-import { Minus, Plus, Package, Percent, Scan, Search, ShoppingBag, ShoppingCart, Tag, Trash2, Wallet, X } from 'lucide-react'
+import { Check, Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Tag, Trash2, Wallet, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { ErrorBanner } from '@/components/StatusViews'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 import type { InventoryItem, Product } from '@/lib/types'
-
-type DiscountMode = 'none' | 'amount' | 'percent' | 'total'
 
 // Shaped pulse-block skeleton matching this screen's actual layout (search bar
 // + hint strip + a handful of product/cart cards), following the same
@@ -50,6 +48,11 @@ function SalesSkeleton() {
 
 export default function SalesPage() {
   const { products, refreshAll, showToast } = useAppStore()
+  // Bumped by refreshAll() after any mutation anywhere in the app, so a sale
+  // recorded here — or stock edited on Inventory/Products — reloads this
+  // screen's stock immediately instead of leaving the previous quantities on
+  // screen until the next manual reload.
+  const refreshKey = useAppStore((s) => s.refreshKey)
 
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, number>>({})
@@ -62,8 +65,6 @@ export default function SalesPage() {
   // charged price.
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
   const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({})
-  const [discountMode, setDiscountMode] = useState<DiscountMode>('none')
-  const [discountInput, setDiscountInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -89,11 +90,17 @@ export default function SalesPage() {
   // persistent ErrorBanner + retry (same pattern as dashboard/page.tsx and
   // dashboard/inventory/page.tsx) instead of a transient auto-clearing error
   // line with no way to retry.
+  // Only the very first load shows the skeleton. Refreshes triggered by a
+  // completed sale (or by another screen's edit, via refreshKey) repaint in
+  // place — flashing the whole screen back to a skeleton after every sale
+  // would be worse than the stale numbers this is here to fix.
+  const hasLoadedOnce = useRef(false)
   const fetchInitial = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedOnce.current) setLoading(true)
     setLoadError(false)
     try {
       await loadInventory()
+      hasLoadedOnce.current = true
     } catch (err) {
       console.error('Load inventory error:', err)
       setLoadError(true)
@@ -104,7 +111,10 @@ export default function SalesPage() {
 
   useEffect(() => {
     fetchInitial()
-  }, [fetchInitial])
+    // refreshKey intentionally re-triggers this fetch on any global refresh,
+    // matching dashboard/page.tsx and dashboard/inventory/page.tsx.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchInitial, refreshKey])
 
   const productMap = useMemo(() => {
     const map: Record<string, Product> = {}
@@ -126,6 +136,10 @@ export default function SalesPage() {
         const name = item.product?.name || ''
         return name.toLowerCase().includes(search.toLowerCase())
       })
+      // Same order as Products and Inventory — this list used to be whatever
+      // sequence the API returned, so the same catalog read differently on
+      // every screen.
+      .sort((a, b) => compareProducts(a.product, b.product))
   }, [inventoryItems, productMap, search])
 
   const cartArray = useMemo(() => {
@@ -152,51 +166,24 @@ export default function SalesPage() {
   /**
    * Money for this sale, in one place.
    *
-   * A cart-level discount is spread across the lines in proportion to what
-   * each contributes, so it resolves back down to a per-unit price — the only
-   * thing the API accepts. That keeps one concept ("what was each unit
-   * actually sold for") on the wire instead of two, and makes the discount
-   * survive correctly when a product sells at several prices in one day.
+   * Cart-level discounts (a so'm amount, a percent, or typing the final
+   * figure) were removed on request — the price charged for a line is the
+   * list price unless it is explicitly renegotiated on the line itself, and
+   * nothing rewrites the cart total behind the cashier's back.
    */
   const totals = useMemo(() => {
     const subtotal = roundMoney(cartArray.reduce((sum, line) => sum + line.lineTotal, 0))
-    const raw = parseFormattedAmount(discountInput)
-
-    // Every way of cutting the price — a so'm discount, a percent, or simply
-    // typing the final figure — resolves to one target amount, so there is a
-    // single code path from here on.
-    let target = subtotal
-    if (discountMode === 'amount') target = subtotal - Math.min(raw, subtotal)
-    else if (discountMode === 'percent') target = subtotal * (1 - Math.min(raw, 100) / 100)
-    // An empty field means "not stated yet", not "charge nothing". For the
-    // amount/percent modes zero is already the no-op, but in total mode zero
-    // would mean giving the whole cart away — so switching to this mode with
-    // an untouched field collapsed the total to 0.
-    else if (discountMode === 'total') target = discountInput.trim() ? Math.min(raw, subtotal) : subtotal
-    target = roundMoney(Math.max(target, 0))
-
-    // Distributed exactly, so the amount the cashier sees is the amount the
-    // server records — down to the so'm. Sending money per line (rather than a
-    // per-unit price) is what makes that possible: 25 000 over 3 units has no
-    // exact per-unit price.
-    const shares = distributeTotal(cartArray.map(line => line.lineTotal), target)
-    const lines = cartArray.map((line, i) => ({
-      ...line,
-      effectiveLineRevenue: shares[i] ?? line.lineTotal,
-    }))
-
     return {
       subtotal,
-      discount: roundMoney(subtotal - target),
-      total: target,
-      lines,
-      // Line-level overrides count as a discount for display purposes too, so
-      // the summary reflects everything given away, not just the cart-level cut.
+      total: subtotal,
+      lines: cartArray,
+      // A per-line renegotiated price is still worth showing as "given away",
+      // so the cashier can see the gap against the list price at a glance.
       lineDiscount: roundMoney(
         cartArray.reduce((sum, line) => sum + (line.listPrice - line.unitPrice) * line.quantity, 0),
       ),
     }
-  }, [cartArray, discountMode, discountInput])
+  }, [cartArray])
 
   const totalPieces = useMemo(
     () => roundQty(cartArray.reduce((sum, { quantity }) => sum + quantity, 0)),
@@ -251,8 +238,6 @@ export default function SalesPage() {
     setPriceOverrides({})
     setPriceDrafts({})
     setQtyDrafts({})
-    setDiscountMode('none')
-    setDiscountInput('')
   }, [])
 
   // One-tap reset of a single cart line to 0 — avoids repeatedly tapping "-"
@@ -365,22 +350,35 @@ export default function SalesPage() {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
     try {
-      const lines = totals.lines.map(({ productId, quantity, effectiveLineRevenue, listPrice }) => ({
+      const lines = totals.lines.map(({ productId, quantity, lineTotal, listPrice }) => ({
         productId,
         quantity,
-        // Only sent when it actually differs — an untouched line stays on the
-        // server's cheap list-price path instead of being routed through the
-        // locked-revenue accumulators for no reason.
-        ...(Math.abs(effectiveLineRevenue - roundMoney(quantity * listPrice)) > 0.005
-          ? { lineRevenue: effectiveLineRevenue }
+        // Only sent when the line was actually renegotiated — an untouched
+        // line stays on the server's cheap list-price path instead of being
+        // routed through the locked-revenue accumulators for no reason.
+        ...(Math.abs(lineTotal - roundMoney(quantity * listPrice)) > 0.005
+          ? { lineRevenue: lineTotal }
           : {}),
       }))
       const today = getBusinessDate()
       await inventoryApi.recordSales(today, lines)
-      clearApiCache()
-      await loadInventory()
-      await refreshAll()
+      // Drop the sold units from what is on screen before anything is
+      // re-fetched, so the remaining stock is correct in the same frame the
+      // cart clears — the network round-trip below only confirms it.
+      setInventoryItems(prev => prev.map(item => {
+        const soldQty = cart[item.productId] || 0
+        if (soldQty <= 0) return item
+        return { ...item, currentQuantity: roundQty(Math.max(item.currentQuantity - soldQty, 0)) }
+      }))
       clearCart()
+      clearApiCache()
+      // refreshAll() re-fetches products + inventory into the shared store and
+      // bumps refreshKey, which is what makes Inventory, Products and
+      // Statistics show the new quantities without their own manual reload.
+      // Sequential, not parallel: refreshAll clears the API cache on entry, so
+      // a concurrent read here would just be a second identical request.
+      await refreshAll()
+      await loadInventory()
       setSuccess(t('salesSuccess'))
       setError(null)
       setTimeout(() => setSuccess(null), 3000)
@@ -392,7 +390,7 @@ export default function SalesPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [totals, totalPieces, submitting, loadInventory, refreshAll, clearCart])
+  }, [cart, totals, totalPieces, submitting, loadInventory, refreshAll, clearCart])
 
   // Manual-entry barcode sheet was not handled before - see useEscapeKey.ts.
   // The camera scanner modal handles its own Escape internally.
@@ -408,7 +406,7 @@ export default function SalesPage() {
 
   const showEmptyNoStock = sellableItems.length === 0 && !search
   const showEmptyNotFound = sellableItems.length === 0 && search
-  const hasDiscount = totals.discount > 0 || Math.abs(totals.lineDiscount) > 0.005
+  const hasDiscount = Math.abs(totals.lineDiscount) > 0.005
 
   const smallInput: React.CSSProperties = {
     padding: '8px 10px',
@@ -720,8 +718,9 @@ export default function SalesPage() {
                       flexWrap: 'wrap',
                     }}>
                       {/* Per-line price edit — the customer who negotiates a
-                          different price for one item is the common case; a
-                          cart-wide discount is the separate control below. */}
+                          different price for one item is the common case.
+                          This is the only place a price can be changed now;
+                          the cart-wide discount control was removed. */}
                       {/* Compact, not full-width: the price is a short number,
                           and letting the field stretch the whole row made the
                           line total look detached from it. */}
@@ -878,136 +877,36 @@ export default function SalesPage() {
         borderRadius: '12px 12px 0 0',
         padding: '12px 16px',
       }}>
-        {/* Cart-wide discount. Kept out of the way until there is something to
-            discount, so the default checkout is still two taps. */}
-        {totalPieces > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            <span style={{
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: 'var(--color-text-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-            }}>
-              <Percent size={14} />
-              {t('discount')}
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['none', 'amount', 'percent', 'total'] as DiscountMode[]).map(mode => {
-                const active = discountMode === mode
-                return (
-                  <button
-                    key={mode}
-                    onClick={() => {
-                      setDiscountMode(mode)
-                      // Seeded with the current total so the field starts from
-                      // what is actually owed rather than empty.
-                      setDiscountInput(mode === 'total' ? formatInputAmount(String(totals.total)) : '')
-                    }}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: 7,
-                      border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                      background: active ? 'var(--color-primary-soft)' : 'transparent',
-                      color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                      fontSize: 12.5,
-                      fontWeight: active ? 700 : 500,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {mode === 'none'
-                      ? t('noDiscount')
-                      : mode === 'amount'
-                        ? "so'm"
-                        : mode === 'percent'
-                          ? '%'
-                          : t('finalPrice')}
-                  </button>
-                )
-              })}
-            </div>
-            {discountMode !== 'none' && (
-              <input
-                type="text"
-                inputMode="numeric"
-                autoFocus
-                aria-label={discountMode === 'percent' ? t('discountPercent') : discountMode === 'total' ? t('finalPrice') : t('discountAmount')}
-                placeholder={discountMode === 'percent' ? '10' : discountMode === 'total' ? formatInputAmount(String(totals.subtotal)) : '5 000'}
-                value={discountInput}
-                onChange={e => setDiscountInput(formatInputAmount(e.target.value))}
-                style={{ ...smallInput, flex: '1 1 110px', maxWidth: 160 }}
-              />
-            )}
-          </div>
-        )}
-
         {/* Running-total KPI chips — same kpiCard/kpiIcon primitive and
             --color-metric-revenue/qty identity colors already established by
             the Statistics/Inventory redesign, instead of the old plain-text
             pairs that sat visually quieter than the buttons below them
             despite being the most important thing to see mid-sale. */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-          <div style={{ ...kpiCard, flex: 1.4, padding: 10, gap: 9 }}>
+          <div style={{ ...kpiCard, flex: '1.4 1 0', minWidth: 0, padding: 10, gap: 9 }}>
             <div style={{ ...kpiIcon, width: 30, height: 30, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}>
               <Wallet size={15} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}</div>
-              {/* Directly editable: the most common real-world ask is "u shuncha
-                  berdi" — the cashier states the money taken and everything
-                  else (per-line amounts, the discount, the profit) follows from
-                  it, rather than making them work backwards to a percentage. */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <input
-                type="text"
-                inputMode="numeric"
-                aria-label={t('saleTotal')}
-                disabled={totalPieces === 0}
-                value={
-                  discountMode === 'total'
-                    ? discountInput
-                    : formatInputAmount(String(totals.total))
-                }
-                onChange={e => {
-                  setDiscountMode('total')
-                  setDiscountInput(formatInputAmount(e.target.value))
-                }}
-                onFocus={() => {
-                  if (discountMode !== 'total') {
-                    setDiscountMode('total')
-                    setDiscountInput(formatInputAmount(String(totals.total)))
-                  }
-                }}
-                size={Math.max(
-                  (discountMode === 'total' ? discountInput : formatInputAmount(String(totals.total))).length,
-                  1,
-                )}
-                style={{
-                  width: 'auto',
-                  minWidth: 0,
-                  padding: 0,
-                  border: 'none',
-                  borderBottom: `1px dashed ${totalPieces === 0 ? 'transparent' : 'var(--color-border)'}`,
-                  background: 'transparent',
-                  outline: 'none',
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' }}>
+                <span style={{
                   fontSize: 17,
                   fontWeight: 800,
                   color: 'var(--color-metric-revenue)',
                   fontVariantNumeric: 'tabular-nums',
                   letterSpacing: -0.3,
-                  fontFamily: 'inherit',
-                }}
-              />
-              <span style={{
-                fontSize: 12, fontWeight: 700, flexShrink: 0,
-                color: 'var(--color-metric-revenue)', opacity: 0.75,
-              }}>so&apos;m</span>
+                  overflowWrap: 'anywhere',
+                }}>
+                  {formatInputAmount(String(totals.total))}
+                </span>
+                <span style={{
+                  fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  color: 'var(--color-metric-revenue)', opacity: 0.75,
+                }}>so&apos;m</span>
               </div>
-              {/* Only shown when money was actually given away, so the normal
-                  sale keeps a single clean number. */}
+              {/* Only shown when a line was renegotiated below its list
+                  price, so the normal sale keeps a single clean number. */}
               {hasDiscount && (
                 <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', marginTop: 2 }}>
                   <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
@@ -1015,13 +914,13 @@ export default function SalesPage() {
                   </span>
                   {' · '}
                   <span style={{ color: 'var(--color-danger)' }}>
-                    −{formatMoney(roundMoney(totals.discount + totals.lineDiscount))}
+                    −{formatMoney(totals.lineDiscount)}
                   </span>
                 </div>
               )}
             </div>
           </div>
-          <div style={{ ...kpiCard, flex: 1, padding: 10, gap: 9 }}>
+          <div style={{ ...kpiCard, flex: '1 1 0', minWidth: 0, padding: 10, gap: 9 }}>
             <div style={{ ...kpiIcon, width: 30, height: 30, background: 'var(--color-metric-qty-soft)', color: 'var(--color-metric-qty)' }}>
               <ShoppingCart size={15} />
             </div>
@@ -1039,31 +938,35 @@ export default function SalesPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        {/* `.btn` is `white-space: nowrap` and, as a flex child, defaults to
+            `min-width: auto` — so three buttons whose labels are wider than
+            the phone could not shrink, and "Savdoni tasdiqlash" was pushed
+            off the right edge of the screen. `.sales-actions` gives them a
+            real `min-width: 0` and, below 560px, puts Confirm on its own
+            full-width row above the two secondary actions. */}
+        <div className="sales-actions">
           <button
             onClick={clearCart}
             disabled={totalPieces === 0}
             className="btn btn-secondary"
-            style={{ gap: 6, flex: 1 }}
           >
             <X size={16} />
-            {t('cancel')}
+            <span>{t('cancel')}</span>
           </button>
           <button
             onClick={() => { setShowBarcodeScanner(true); setError(null) }}
             className="btn btn-secondary"
-            style={{ gap: 6, flex: 1 }}
           >
             <Scan size={16} />
-            {t('barcode')}
+            <span>{t('barcode')}</span>
           </button>
           <button
             onClick={handleConfirmSale}
             disabled={totalPieces === 0 || submitting}
-            className="btn btn-primary"
-            style={{ gap: 6, flex: 1.5 }}
+            className="btn btn-primary sales-actions-confirm"
           >
-            {submitting ? t('loading') : t('confirmSale')}
+            <Check size={16} />
+            <span>{submitting ? t('loading') : t('confirmSale')}</span>
           </button>
         </div>
       </div>
