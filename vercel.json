@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://hisvex-prod-api.onrender.com/api/:path*"
+      "destination": "https://hisvex-api.onrender.com/api/:path*"
     }
   ]
 }
