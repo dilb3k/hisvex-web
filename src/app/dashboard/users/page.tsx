@@ -12,6 +12,7 @@ import { t } from '@/lib/i18n'
 import { formatPhone, displayPhone, formatLastActive } from '@/lib/formatters'
 import { ErrorBanner } from '@/components/StatusViews'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
+import { PasswordInput } from '@/components/PasswordInput'
 import type { User } from '@/lib/types'
 
 // Kept as raw hex (not CSS vars) deliberately: these feed the `${color}1A`/`${color}33`
@@ -894,8 +895,7 @@ function AdminFormModal({
                   <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}> ({t('phoneOptional')})</span>
                 )}
               </label>
-              <input
-                type="password"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit() }}

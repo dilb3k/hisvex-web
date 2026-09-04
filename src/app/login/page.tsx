@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/authStore'
 import { t } from '@/lib/i18n'
 import { formatPhone } from '@/lib/formatters'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
+import { PasswordInput } from '@/components/PasswordInput'
 
 // Every value here is a theme token, not a literal. The page used to carry
 // its own violet dark palette (#070512, rgba(167,139,250,…)), which is why it
@@ -349,8 +350,8 @@ export default function LoginPage() {
 
                 <div>
                   <label style={labelStyle}>{t('password')}</label>
-                  <input
-                    type="password" value={password}
+                  <PasswordInput
+                    value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setFocusedField('password')}
                     onBlur={() => setFocusedField(null)}
@@ -364,8 +365,8 @@ export default function LoginPage() {
                   <>
                     <div>
                       <label style={labelStyle}>{t('confirmPassword')}</label>
-                      <input
-                        type="password" value={confirmPassword}
+                      <PasswordInput
+                        value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         onFocus={() => setFocusedField('confirm')}
                         onBlur={() => setFocusedField(null)}
