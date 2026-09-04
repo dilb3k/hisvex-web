@@ -17,12 +17,13 @@ import type { ProductUnit } from '@/lib/types'
 import dayjs from 'dayjs'
 import {
   Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
-  Wallet, ShoppingCart, Package, BarChart3, Archive, Trophy,
+  Wallet, ShoppingCart, Package, BarChart3, Archive, Trophy, Lock,
 } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { formatMoney, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { SECTION_LABEL, ErrorBanner } from '@/components/StatusViews'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
+import { useAuthStore } from '@/lib/authStore'
 
 type Period = 'daily' | 'monthly' | 'yearly'
 type BucketUnit = 'day' | 'month'
@@ -426,6 +427,43 @@ function RangeDateButton({ label, value, onChange }: { label: string; value: str
 // Page
 // ============================================================
 
+// Bor/Pro-only screen. A 'tekin' admin can still use every operational
+// screen (Sales, Products, Inventory) - they lose the reporting/analytics
+// layer specifically, not the ability to run the shop day to day. Gated
+// here (not by hiding the sidebar link) so a direct visit is caught too,
+// and gated by skipping the fetches entirely (not just hiding the result)
+// so a locked-out account never even requests the aggregated numbers this
+// screen exists to sell.
+function StatsLocked() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+      padding: '64px 24px', maxWidth: 420, margin: '40px auto 0',
+    }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(145,149,166,0.12)', color: 'var(--color-text-secondary)', marginBottom: 18,
+      }}>
+        <Lock size={24} />
+      </div>
+      <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text)', margin: '0 0 8px' }}>
+        {t('statsLockedTitle')}
+      </h2>
+      <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 20px' }}>
+        {t('statsLockedBody')}
+      </p>
+      <a
+        href="https://t.me/dilbek7011"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="btn btn-primary"
+      >
+        {t('contactAdmin')}
+      </a>
+    </div>
+  )
+}
+
 export default function StatisticsPage() {
   const [period, setPeriod] = useState<Period>('daily')
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
@@ -439,6 +477,11 @@ export default function StatisticsPage() {
   const [allTimeLoading, setAllTimeLoading] = useState(false)
   const [allTimeError, setAllTimeError] = useState(false)
   const refreshKey = useAppStore((s) => s.refreshKey)
+  const tier = useAuthStore((s) => s.user?.tier)
+  // Undefined (not yet hydrated) never locks — only an explicit 'tekin'
+  // does, so a cache miss fails open to "show the page" rather than
+  // flashing the lock screen for every paying admin on every load.
+  const isLocked = tier === 'tekin'
 
   const range = useMemo(() => getPeriodRange(period, selectedDate), [period, selectedDate])
   const periodLabel = useMemo(() => formatPeriodLabel(period, selectedDate), [period, selectedDate])
@@ -450,6 +493,10 @@ export default function StatisticsPage() {
   // which response "won"). Mirrors the cancellation guard the dailyChartItems
   // effect right below already uses.
   useEffect(() => {
+    // Locked account: never even ask. "Statistikalar kelmasligi kerak" -
+    // the numbers this page exists to show must not arrive over the wire
+    // for a 'tekin' admin, not just be withheld from the render.
+    if (isLocked) { setLoading(false); return }
     let cancelled = false
     setLoading(true)
     setLoadError(false)
@@ -458,11 +505,12 @@ export default function StatisticsPage() {
       .catch(() => { if (!cancelled) { setInventoryItems([]); setLoadError(true) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [range.from, range.to, refreshKey])
+  }, [range.from, range.to, refreshKey, isLocked])
 
   // Manual refresh button still needs a plain callable - re-fetches the
   // current range on demand without duplicating the request logic above.
   const fetchData = useCallback(async () => {
+    if (isLocked) return
     setLoading(true)
     setLoadError(false)
     try {
@@ -472,7 +520,7 @@ export default function StatisticsPage() {
       setInventoryItems([])
       setLoadError(true)
     } finally { setLoading(false) }
-  }, [range.from, range.to])
+  }, [range.from, range.to, isLocked])
 
   // The chart needs finer-grained history than a single "daily" period's range provides
   // (that range is just one day) — widen it to a rolling 14-day window client-side only
@@ -492,6 +540,7 @@ export default function StatisticsPage() {
 
   useEffect(() => {
     if (period !== 'daily') return
+    if (isLocked) { setDailyChartLoading(false); return }
     let cancelled = false
     setDailyChartLoading(true)
     inventoryApi.getByDate(chartRange.from, chartRange.to)
@@ -499,7 +548,7 @@ export default function StatisticsPage() {
       .catch(() => { if (!cancelled) setDailyChartItems([]) })
       .finally(() => { if (!cancelled) setDailyChartLoading(false) })
     return () => { cancelled = true }
-  }, [period, chartRange.from, chartRange.to, refreshKey])
+  }, [period, chartRange.from, chartRange.to, refreshKey, isLocked])
 
   const chartItems = period === 'daily' ? dailyChartItems : inventoryItems
   const chartIsLoading = period === 'daily' ? dailyChartLoading : loading
@@ -661,6 +710,8 @@ export default function StatisticsPage() {
       </div>
     )
   }
+
+  if (isLocked) return <StatsLocked />
 
   return (
     <div style={{ maxWidth: 780, margin: '0 auto' }}>
