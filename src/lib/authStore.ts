@@ -70,7 +70,7 @@ interface AuthState {
   hydrate: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: '',
   refreshToken: '',
   user: null,
@@ -95,7 +95,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user })
   },
   logout: () => {
-    try { authApi.logout().catch(() => {}) } catch {}
+    // Read the token before anything clears it, and hand it to the request
+    // directly — see authApi.logout. Still fire-and-forget, so signing out
+    // stays instant and works offline; it just now carries a credential.
+    const token = get().token
+    try { authApi.logout(token).catch(() => {}) } catch {}
     setApiToken(null)
     setRefreshToken('')
     clearApiCache()

@@ -212,7 +212,22 @@ export const authApi = {
     phone_number,
     ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
   }),
-  logout: () => api.post('/auth/logout'),
+  // The caller passes its token explicitly because logout races the local
+  // sign-out: the request interceptor reads `apiToken` when the request is
+  // actually dispatched, which is a microtask after the caller has already
+  // cleared it. The logout then went out with no Authorization header, the
+  // server answered 401, and the account's activeSessionId was never
+  // released — so the next login was met with "this account is active on
+  // another device" and a phone-verification prompt.
+  //
+  // An explicit header survives, because the interceptor only sets one when
+  // `apiToken` is non-null and so never overwrites this.
+  logout: (token?: string) =>
+    api.post(
+      '/auth/logout',
+      undefined,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+    ),
   getMe: () => api.get<User>('/auth/me'),
   updateMe: (data: Partial<User>) => api.put('/auth/me', data),
 }
