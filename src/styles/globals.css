@@ -785,3 +785,59 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     flex: 1 0 100%;
   }
 }
+
+/* ── Login: two-column layout ──────────────────────────────────────────────
+   Brand panel left, form right. Written as classes rather than inline styles
+   because the split has to collapse on narrow screens, and inline styles
+   cannot carry a media query. */
+
+.login-split {
+  min-height: 100dvh;
+  display: flex;
+  background: var(--color-bg);
+}
+
+.login-brand {
+  /* Fixed-ish share of the width rather than 50/50: past ~1400px an even
+     split leaves the form marooned in the middle of a very wide column. */
+  flex: 0 0 44%;
+  max-width: 620px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 56px clamp(40px, 5vw, 72px);
+  /* Deliberately a fixed violet in both themes, not a token: this panel is
+     the brand surface, and its white text needs a dark ground underneath it
+     whichever theme the user picked. */
+  background: linear-gradient(155deg, #4C1D95 0%, #6D28D9 46%, #7C3AED 100%);
+  color: #fff;
+}
+
+.login-form-col {
+  flex: 1 1 auto;
+  display: flex;
+  /* flex-start + `margin-block: auto` on the child, rather than
+     `align-items: center`. Both centre a short form, but centring via
+     align-items clips the top of a tall one once it overflows — the register
+     form with every field shown is tall enough to hit that. */
+  align-items: flex-start;
+  justify-content: center;
+  /* Owns the scroll so a long register form never drags the brand panel. */
+  overflow-y: auto;
+  max-height: 100dvh;
+  padding: clamp(28px, 7vh, 64px) clamp(16px, 5vw, 40px) clamp(24px, 6vh, 48px);
+}
+
+.login-form-col > * {
+  margin-block: auto;
+}
+
+/* The form column repeats the logo and wordmark only when the panel is gone. */
+.login-compact-head { display: none; }
+
+@media (max-width: 900px) {
+  .login-brand { display: none; }
+  .login-compact-head { display: block; }
+  .login-form-col { max-height: none; overflow-y: visible; }
+}

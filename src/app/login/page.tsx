@@ -162,60 +162,98 @@ export default function LoginPage() {
   })
 
   return (
-    <div style={{
-      minHeight: '100dvh',
-      display: 'flex',
-      // Top-anchored, not centred: centring the whole column pushed the logo
-      // into the middle of a tall screen. `flex-start` with a measured top
-      // padding keeps the mark high and the form above the fold.
-      alignItems: 'flex-start',
-      justifyContent: 'center',
-      background: C.bg,
-      padding: 'clamp(28px, 7vh, 64px) clamp(16px, 5vw, 32px) clamp(24px, 6vh, 48px)',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      {/* Ambient light only — the page background itself is the theme's, so
-          this reads the same in light and dark instead of forcing a dark
-          gradient over a light surface. */}
-      <div style={{
-        position: 'fixed', width: 600, height: 600, borderRadius: '50%',
-        background: 'radial-gradient(circle, var(--color-primary-soft) 0%, transparent 70%)',
-        top: '-220px', right: '-200px', zIndex: 0, pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'fixed', width: 520, height: 520, borderRadius: '50%',
-        background: 'radial-gradient(circle, var(--color-primary-soft) 0%, transparent 70%)',
-        bottom: '-180px', left: '-160px', zIndex: 0, pointerEvents: 'none', opacity: 0.7,
-      }} />
+    <div className="login-split">
+      {/*
+        Brand panel. Hidden below 900px rather than stacked above the form:
+        on a phone it would push the actual inputs off the first screen, and
+        the whole point of the panel is space the narrow layout does not have.
+        The compact lockup inside the form column covers that case.
+      */}
+      <aside className="login-brand">
+        {/* Ambient light, kept off the edges so no glow ends on a hard arc. */}
+        <div style={{
+          position: 'absolute', width: 620, height: 620, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,255,255,0.16) 0%, transparent 70%)',
+          top: '-240px', right: '-180px', pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', width: 520, height: 520, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%)',
+          bottom: '-200px', left: '-160px', pointerEvents: 'none',
+        }} />
 
-      <div style={{ width: '100%', maxWidth: 360, position: 'relative', zIndex: 1 }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: 420 }}>
           <div style={{
-            width: 64, height: 64, borderRadius: 18,
-            overflow: 'hidden', margin: '0 auto 14px',
-            boxShadow: '0 8px 26px rgba(124,58,237,0.28)',
+            width: 84, height: 84, borderRadius: 24, overflow: 'hidden',
+            marginBottom: 30, boxShadow: '0 14px 40px rgba(0,0,0,0.30)',
           }}>
             <Image
               src="/logo-256.png" alt="Hisvex"
-              width={64} height={64}
+              width={84} height={84}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               priority
             />
           </div>
+
           <h1 style={{
-            margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
-            display: 'flex', justifyContent: 'center',
+            margin: 0, display: 'flex',
+            fontSize: 48, fontWeight: 800, letterSpacing: -1.4, lineHeight: 1,
           }}>
-            <span style={{ color: 'var(--color-primary)' }}>His</span>
-            <span style={{ color: C.text }}>vex</span>
+            <span style={{ color: '#DDD1FE' }}>His</span>
+            <span style={{ color: '#FFFFFF' }}>vex</span>
           </h1>
-          <p style={{ margin: '6px 0 0', fontSize: 13, color: C.textSecondary, letterSpacing: 0.3 }}>
+
+          <p style={{
+            margin: '18px 0 0', fontSize: 18, lineHeight: 1.55,
+            color: 'rgba(255,255,255,0.82)', fontWeight: 500,
+          }}>
+            {t('splashTagline')}
+          </p>
+
+          <div style={{
+            width: 52, height: 3, borderRadius: 3, marginTop: 30,
+            background: 'rgba(255,255,255,0.32)',
+          }} />
+        </div>
+      </aside>
+
+      {/* Form column. Owns the page background and the scroll, so a long
+          register form scrolls without dragging the brand panel with it. */}
+      <main className="login-form-col">
+        <div style={{ width: '100%', maxWidth: 360, position: 'relative', zIndex: 1 }}>
+          <div className="login-compact-head" style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 18,
+              overflow: 'hidden', margin: '0 auto 14px',
+              boxShadow: '0 8px 26px rgba(124,58,237,0.28)',
+            }}>
+              <Image
+                src="/logo-256.png" alt="Hisvex"
+                width={64} height={64}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                priority
+              />
+            </div>
+            <h1 style={{
+              margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
+              display: 'flex', justifyContent: 'center',
+            }}>
+              <span style={{ color: 'var(--color-primary)' }}>His</span>
+              <span style={{ color: C.text }}>vex</span>
+            </h1>
+          </div>
+
+          {/* Outside the compact lockup: the wide layout drops the logo and
+              wordmark (the panel already carries them) but still needs to say
+              which form this is. */}
+          <p style={{
+            margin: '0 0 24px', fontSize: 14, color: C.textSecondary,
+            letterSpacing: 0.3, textAlign: 'center',
+          }}>
             {phoneVerifyStep
               ? t('verifyPhone')
               : isLoginMode ? t('signInToSystem') : t('createAccount')}
           </p>
-        </div>
 
         <div style={{
           borderRadius: 16, border: `1px solid ${C.border}`,
@@ -474,8 +512,9 @@ export default function LoginPage() {
             <span style={{ fontSize: 13, color: C.textSecondary }}>{t('contactAdminLink')}</span>
             <span style={{ fontSize: 13.5, fontWeight: 700, color: C.accent }}>{t('contactAdminTelegram')}</span>
           </button>
+          </div>
         </div>
-      </div>
+      </main>
 
       {showBusinessDayHelp && (
         <div
