@@ -23,6 +23,7 @@ import {
   Shield,
   Lock,
   Unlock,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 import {
   getBusinessDayStartHour,
@@ -67,6 +68,83 @@ const cardStyle: React.CSSProperties = {
   border: '1px solid var(--color-border)',
   marginBottom: 8,
 }
+
+/**
+ * Related settings live in one bordered group with hairline dividers, rather
+ * than each row being its own floating card. The page previously stacked a
+ * dozen separate boxes with 8px gaps, which read as clutter and gave no clue
+ * which controls belonged together.
+ */
+const groupStyle: React.CSSProperties = {
+  borderRadius: 14,
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-border)',
+  overflow: 'hidden',
+}
+
+const rowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  width: '100%',
+  padding: '13px 16px',
+  background: 'transparent',
+  border: 'none',
+  // The divider is drawn per row and removed from the last one inline, so a
+  // group renders correctly whatever mix of rows it happens to contain.
+  borderBottom: '1px solid var(--color-border)',
+  textAlign: 'left',
+  font: 'inherit',
+  color: 'var(--color-text)',
+}
+
+const rowLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  fontSize: 14,
+  fontWeight: 600,
+  color: 'var(--color-text)',
+  minWidth: 0,
+}
+
+const rowValueStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 13.5,
+  fontWeight: 600,
+  color: 'var(--color-text-secondary)',
+  flexShrink: 0,
+}
+
+/** Compact two-option control that sits on the right of a row. */
+const segWrapStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 3,
+  padding: 3,
+  borderRadius: 10,
+  background: 'var(--color-bg)',
+  border: '1px solid var(--color-border)',
+  flexShrink: 0,
+}
+
+const segItemStyle = (selected: boolean): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 12px',
+  borderRadius: 7,
+  border: 'none',
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: selected ? 700 : 600,
+  background: selected ? 'var(--color-surface)' : 'transparent',
+  color: selected ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+  boxShadow: selected ? '0 1px 3px rgba(0,0,0,0.16)' : 'none',
+  transition: 'background 0.15s, color 0.15s',
+})
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -345,10 +423,19 @@ export default function SettingsPage() {
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 40 }}>
-      {/* User Info */}
+      <h1 style={{
+        margin: '0 0 18px', fontSize: 22, fontWeight: 800,
+        letterSpacing: -0.4, color: 'var(--color-text)',
+      }}>
+        {t('settings')}
+      </h1>
+
+      {/* User Info. Identity and plan are one group: they describe the same
+          account, and as two separate boxes they read as unrelated. */}
       {user && (
         <div style={sectionStyle}>
-          <div style={cardStyle}>
+          <div style={groupStyle}>
+          <div style={{ ...cardStyle, marginBottom: 0, border: 'none', borderRadius: 0, background: 'transparent', borderBottom: '1px solid var(--color-border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{
                 width: 48,
@@ -376,16 +463,16 @@ export default function SettingsPage() {
             onClick={() => setShowTariffs(true)}
             style={{
               ...cardStyle,
-              // Real fix: `${var(...)}}40` is not a valid CSS color (alpha-suffix
-              // hex trick doesn't work on a var() reference) — it silently failed
-              // to apply, leaving the border on the plain neutral color instead of
-              // a tier-tinted one. color-mix() works with any valid CSS color.
-              borderColor: `color-mix(in srgb, ${getTierColor(userTier)} 40%, transparent)`,
+              // Now the last row of the identity group: no outer border or
+              // radius of its own, and no bottom margin.
+              marginBottom: 0,
+              border: 'none',
+              borderRadius: 0,
               background: userTier === 'pro'
                 ? 'var(--color-primary-soft)'
                 : userTier === 'bor'
                   ? 'rgba(34,197,94,0.06)'
-                  : 'var(--color-surface)',
+                  : 'transparent',
               cursor: 'pointer',
               transition: 'filter 0.15s',
             }}
@@ -413,11 +500,14 @@ export default function SettingsPage() {
               </div>
             ) : null}
           </div>
+          </div>
         </div>
       )}
 
-      {/* User Management (superadmin) */}
-      {user?.role === 'superAdmin' && (
+      {/* User Management (superadmin). Hidden when the list is empty rather
+          than rendering a heading with nothing under it — with a single admin
+          account the section was just a dangling label. */}
+      {user?.role === 'superAdmin' && (adminsLoading || admins.length > 0) && (
         <div style={sectionStyle}>
           <div style={sectionHeaderStyle}>
             <Users size={16} />
@@ -506,97 +596,112 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Language */}
+      {/* General — language, theme, business-day hour and block code share one
+          group: they are all "how this account behaves" and were previously
+          four disconnected boxes. */}
       <div style={sectionStyle}>
         <div style={sectionHeaderStyle}>
-          <Globe size={16} />
-          {t('language')}
+          <SettingsIcon size={16} />
+          {/* navSectionOverview ("Umumiy"), not `settings` — the page heading
+              is already "Sozlamalar" and repeating it as the group label read
+              as a duplicate. */}
+          {t('navSectionOverview')}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {LANGUAGES.map(lang => {
-            const selected = language === lang.code
-            return (
-              <button
-                key={lang.code}
-                onClick={() => handleSetLanguage(lang.code)}
-                style={{
-                  ...pillStyle,
-                  background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                  borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
-                  color: selected ? 'var(--color-primary)' : 'var(--color-text)',
-                  fontWeight: selected ? 700 : 600,
-                }}
-                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
-                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
-              >
-                {lang.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
 
-      {/* Theme */}
-      <div style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
-          {t('theme')}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {THEMES.map(item => {
-            const selected = theme === item.code
-            const Icon = item.icon
-            return (
-              <button
-                key={item.code}
-                onClick={() => handleSetTheme(item.code)}
-                style={{
-                  ...pillStyle,
-                  background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                  borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
-                  color: selected ? 'var(--color-primary)' : 'var(--color-text)',
-                  fontWeight: selected ? 700 : 600,
-                }}
-                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
-                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
-              >
-                <Icon size={18} />
-                {item.code === 'light' ? t('light') : t('dark')}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Business Day Hour */}
-      <div style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          <Clock size={16} />
-          {t('businessDayHour')}
-        </div>
-        <button
-          onClick={openBusinessDay}
-          style={{
-            ...cardStyle,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: '100%',
-            cursor: 'pointer',
-            textAlign: 'left',
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
-        >
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>{t('businessDayHour')}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-primary)' }}>
-              {String(getBusinessDayStartHour()).padStart(2, '0')}:00
+        <div style={groupStyle}>
+          {/* Language */}
+          <div style={rowStyle}>
+            <span style={rowLabelStyle}>
+              <Globe size={17} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+              {t('language')}
             </span>
-            <ChevronRight size={18} style={{ color: 'var(--color-text-secondary)' }} />
-          </span>
-        </button>
+            <span style={segWrapStyle}>
+              {LANGUAGES.map(lang => {
+                const selected = language === lang.code
+                return (
+                  <button
+                    key={lang.code}
+                    onClick={() => handleSetLanguage(lang.code)}
+                    style={segItemStyle(selected)}
+                  >
+                    {lang.label}
+                  </button>
+                )
+              })}
+            </span>
+          </div>
+
+          {/* Theme */}
+          <div style={rowStyle}>
+            <span style={rowLabelStyle}>
+              {theme === 'dark'
+                ? <Moon size={17} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+                : <Sun size={17} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />}
+              {t('theme')}
+            </span>
+            <span style={segWrapStyle}>
+              {THEMES.map(item => {
+                const selected = theme === item.code
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.code}
+                    onClick={() => handleSetTheme(item.code)}
+                    style={segItemStyle(selected)}
+                    aria-label={item.code === 'light' ? t('light') : t('dark')}
+                  >
+                    <Icon size={16} />
+                    {item.code === 'light' ? t('light') : t('dark')}
+                  </button>
+                )
+              })}
+            </span>
+          </div>
+
+          {/* Business day hour */}
+          <button
+            onClick={openBusinessDay}
+            style={{ ...rowStyle, cursor: 'pointer', transition: 'background 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <span style={rowLabelStyle}>
+              <Clock size={17} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+              {t('businessDayHour')}
+            </span>
+            <span style={rowValueStyle}>
+              <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
+                {String(getBusinessDayStartHour()).padStart(2, '0')}:00
+              </span>
+              <ChevronRight size={17} />
+            </span>
+          </button>
+
+          {/* Block code — last row, so its divider is removed. */}
+          <button
+            onClick={openBlockModal}
+            style={{ ...rowStyle, borderBottom: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <span style={rowLabelStyle}>
+              <Lock
+                size={17}
+                style={{
+                  color: blockCode ? 'var(--color-warning)' : 'var(--color-text-secondary)',
+                  flexShrink: 0,
+                }}
+              />
+              {t('blockCode')}
+            </span>
+            <span style={rowValueStyle}>
+              {blockCode
+                ? (blockDisabled ? t('blockCodeDisabledStatus') : t('blockCodeActive'))
+                : t('blockCodeInactive')}
+              <ChevronRight size={17} />
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Support */}
@@ -605,46 +710,22 @@ export default function SettingsPage() {
           <MessageCircle size={16} />
           {t('support')}
         </div>
-        <a
-          href="https://t.me/dilbek7011"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            ...cardStyle,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            textDecoration: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <MessageCircle size={20} color="#0088cc" />
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#0088cc' }}>Telegram: @dilbek7011</span>
-        </a>
-      </div>
-
-      {/* Logout */}
-      <div style={sectionStyle}>
-        <button
-          onClick={handleLogout}
-          style={{
-            ...cardStyle,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            width: '100%',
-            cursor: 'pointer',
-            color: 'var(--color-danger)',
-            fontWeight: 700,
-            fontSize: 14,
-            background: 'rgba(239,68,68,0.08)',
-            borderColor: 'rgba(239,68,68,0.3)',
-          }}
-        >
-          <LogOut size={20} />
-          {t('logout')}
-        </button>
+        <div style={groupStyle}>
+          <a
+            href="https://t.me/dilbek7011"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ ...rowStyle, borderBottom: 'none', textDecoration: 'none', transition: 'background 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <span style={{ ...rowLabelStyle, color: '#0088cc' }}>
+              <MessageCircle size={17} style={{ color: '#0088cc', flexShrink: 0 }} />
+              Telegram: @dilbek7011
+            </span>
+            <ChevronRight size={17} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+          </a>
+        </div>
       </div>
 
       {/* Subscription Modal */}
@@ -790,43 +871,35 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Block Code */}
-      <div style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          <Lock size={16} />
-          {t('blockCode')}
-        </div>
+      {/* Logout — deliberately the last thing on the page. It used to sit
+          above the block-code section, so the page continued past what reads
+          as its closing action. */}
+      <div style={{ ...sectionStyle, marginTop: 4 }}>
         <button
-          onClick={openBlockModal}
+          onClick={handleLogout}
           style={{
-            ...cardStyle,
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            justifyContent: 'center',
+            gap: 8,
             width: '100%',
+            padding: '13px 16px',
+            borderRadius: 14,
             cursor: 'pointer',
-            textAlign: 'left',
+            color: 'var(--color-danger)',
+            fontWeight: 700,
+            fontSize: 14,
+            background: 'transparent',
+            border: '1px solid color-mix(in srgb, var(--color-danger) 32%, transparent)',
             transition: 'background 0.15s',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'color-mix(in srgb, var(--color-danger) 10%, transparent)'
+          }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
         >
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: blockCode ? 'rgba(245,158,11,0.12)' : 'var(--color-bg)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            <Lock size={20} style={{ color: blockCode ? 'var(--color-warning)' : 'var(--color-text-secondary)' }} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{t('blockCode')}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-              {blockCode
-                ? (blockDisabled ? t('blockCodeDisabledStatus') : t('blockCodeActive'))
-                : t('blockCodeInactive')}
-            </div>
-          </div>
-          <ChevronRight size={18} style={{ color: 'var(--color-text-secondary)' }} />
+          <LogOut size={18} />
+          {t('logout')}
         </button>
       </div>
 

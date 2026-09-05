@@ -183,14 +183,21 @@ export default function LoginPage() {
         }} />
 
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 420 }}>
+          {/* The mark sits on the form's own surface colour rather than
+              straight on the violet. The artwork is itself a violet tile, so
+              against the panel it read as a washed-out box with a visible
+              edge; a contrasting plate makes it deliberate and matches the
+              card the form lives in. */}
           <div style={{
-            width: 84, height: 84, borderRadius: 24, overflow: 'hidden',
+            width: 92, height: 92, borderRadius: 24,
             marginBottom: 30, boxShadow: '0 14px 40px rgba(0,0,0,0.30)',
+            background: C.surface,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <Image
               src="/logo-256.png" alt="Hisvex"
-              width={84} height={84}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              width={64} height={64}
+              style={{ width: 64, height: 64, objectFit: 'contain' }}
               priority
             />
           </div>
@@ -223,14 +230,16 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: 360, position: 'relative', zIndex: 1 }}>
           <div className="login-compact-head" style={{ textAlign: 'center', marginBottom: 24 }}>
             <div style={{
-              width: 64, height: 64, borderRadius: 18,
-              overflow: 'hidden', margin: '0 auto 14px',
-              boxShadow: '0 8px 26px rgba(124,58,237,0.28)',
+              width: 68, height: 68, borderRadius: 18,
+              margin: '0 auto 14px',
+              boxShadow: '0 8px 26px rgba(124,58,237,0.22)',
+              background: C.surface,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <Image
                 src="/logo-256.png" alt="Hisvex"
-                width={64} height={64}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                width={48} height={48}
+                style={{ width: 48, height: 48, objectFit: 'contain' }}
                 priority
               />
             </div>
