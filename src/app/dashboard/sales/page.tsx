@@ -18,12 +18,14 @@ import {
   normalizeQuantityInput,
   parseQuantityInput,
 } from '@/lib/inventory'
-import { formatMoney, formatInputAmount, parseFormattedAmount, kpiCard, kpiIcon } from '@/lib/sharedStyles'
-import { Check, Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Tag, Trash2, Wallet, X } from 'lucide-react'
+import { formatMoney, formatInputAmount, parseFormattedAmount, kpiCard, kpiIcon, overlay } from '@/lib/sharedStyles'
+import { Check, Lock, Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Tag, Trash2, Wallet, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { ErrorBanner } from '@/components/StatusViews'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
+import { useAuthStore } from '@/lib/authStore'
+import { isBlockCodeDisabled } from '@/utils/blockCode'
 import type { InventoryItem, Product } from '@/lib/types'
 
 // Shaped pulse-block skeleton matching this screen's actual layout (search bar
@@ -75,6 +77,22 @@ export default function SalesPage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
+
+  // Per-line price change is gated behind the same PIN used to protect
+  // deleting a product/debtor — a cashier quietly discounting a sale is at
+  // least as sensitive as either of those. Mirrors dashboard/products'
+  // pattern exactly (blockCode / blockDisabled / PIN modal state).
+  const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  const [blockDisabled, setBlockDisabledState] = useState(false)
+  useEffect(() => { setBlockDisabledState(isBlockCodeDisabled()) }, [])
+  const [showPinVerify, setShowPinVerify] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
+  const pinInputRef = useRef<HTMLInputElement | null>(null)
+  // The override a correct PIN should actually apply — stashed here rather
+  // than re-derived from the (already-cleared) draft field, since commitPrice
+  // clears priceDrafts as soon as it runs, before the PIN is ever entered.
+  const [pendingPriceOverride, setPendingPriceOverride] = useState<{ productId: string; price: number } | null>(null)
 
   // Plain fetch — used both by the initial load and to silently refresh
   // stock right after a completed sale. Throws on failure; callers decide
@@ -190,6 +208,12 @@ export default function SalesPage() {
     [cartArray],
   )
 
+  // Only ever non-empty for a line whose price was explicitly changed away
+  // from list (see commitPrice) — a plain quantity/list-price cart never
+  // populates this, so it's a safe "does this sale carry a renegotiated
+  // price" flag for the confirm button's lock indicator below.
+  const hasPriceOverride = Object.keys(priceOverrides).length > 0
+
   const setQuantity = useCallback((productId: string, next: number, max: number, unit: string) => {
     const clamped = roundQty(Math.max(next, 0))
     if (qtyGreaterThan(clamped, max)) {
@@ -268,7 +292,8 @@ export default function SalesPage() {
       return rest
     })
     // Empty or unchanged means "no override" rather than "charge zero" — a
-    // cleared field should read as the list price, not as a giveaway.
+    // cleared field should read as the list price, not as a giveaway. Never
+    // PIN-gated: returning to the list price isn't the sensitive direction.
     if (!raw.trim() || parsed === listPrice) {
       setPriceOverrides(prev => {
         const { [productId]: _removed, ...rest } = prev
@@ -276,7 +301,42 @@ export default function SalesPage() {
       })
       return
     }
-    setPriceOverrides(prev => ({ ...prev, [productId]: roundMoney(Math.max(parsed, 0)) }))
+    const nextPrice = roundMoney(Math.max(parsed, 0))
+    if (blockCode && !blockDisabled) {
+      setPendingPriceOverride({ productId, price: nextPrice })
+      setPinInput('')
+      setPinVerifyError(null)
+      setShowPinVerify(true)
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+      return
+    }
+    setPriceOverrides(prev => ({ ...prev, [productId]: nextPrice }))
+  }, [blockCode, blockDisabled])
+
+  const confirmPin = useCallback((value: string) => {
+    if (value === blockCode) {
+      if (pendingPriceOverride) {
+        setPriceOverrides(prev => ({ ...prev, [pendingPriceOverride.productId]: pendingPriceOverride.price }))
+      }
+      setShowPinVerify(false)
+      setPinInput('')
+      setPinVerifyError(null)
+      setPendingPriceOverride(null)
+    } else {
+      setPinVerifyError("Blok kod noto'g'ri")
+      setPinInput('')
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+    }
+  }, [blockCode, pendingPriceOverride])
+
+  // Declining the PIN must leave the price exactly where it was before the
+  // edit — the field itself already reverts (priceDrafts was cleared in
+  // commitPrice), this just makes sure the pending change never lands.
+  const cancelPin = useCallback(() => {
+    setShowPinVerify(false)
+    setPinInput('')
+    setPinVerifyError(null)
+    setPendingPriceOverride(null)
   }, [])
 
   const resetPrice = useCallback((productId: string) => {
@@ -394,7 +454,10 @@ export default function SalesPage() {
 
   // Manual-entry barcode sheet was not handled before - see useEscapeKey.ts.
   // The camera scanner modal handles its own Escape internally.
-  useEscapeToClose([[showBarcode, () => { setShowBarcode(false); setBarcodeInput('') }]])
+  useEscapeToClose([
+    [showBarcode, () => { setShowBarcode(false); setBarcodeInput('') }],
+    [showPinVerify, cancelPin],
+  ])
 
   if (loading) {
     return (
@@ -869,6 +932,75 @@ export default function SalesPage() {
         cartCount={totalPieces}
       />
 
+      {/* PIN Verification — gates a per-line price change when a blockCode
+          is set, same pattern as Products/Debtors' delete gate. */}
+      {showPinVerify && (
+        <div style={overlay} onClick={cancelPin}>
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            padding: 24,
+            width: '100%',
+            maxWidth: 380,
+            border: '1px solid var(--color-border)',
+            textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
+              {t('priceChangeRequiresBlockCode')}
+            </div>
+            <input
+              ref={pinInputRef}
+              type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={4}
+              placeholder="••••"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pinInput.length === 4) confirmPin(pinInput) }}
+              onFocus={(e) => e.target.select()}
+              style={{
+                width: '100%',
+                maxWidth: 200,
+                height: 56,
+                borderRadius: 12,
+                border: '1.5px solid var(--color-border)',
+                background: 'var(--color-bg)',
+                color: 'var(--color-text)',
+                fontSize: 26,
+                fontWeight: 700,
+                textAlign: 'center',
+                outline: 'none',
+                letterSpacing: 12,
+                caretColor: 'var(--color-primary)',
+                fontVariantNumeric: 'tabular-nums',
+                marginBottom: 16,
+              }}
+            />
+            {pinVerifyError ? (
+              <div style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 16, minHeight: 18 }}>{pinVerifyError}</div>
+            ) : (
+              <div style={{ minHeight: 18, marginBottom: 16 }} />
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={cancelPin} className="btn btn-secondary">{t('cancel')}</button>
+              <button
+                onClick={() => confirmPin(pinInput)}
+                disabled={pinInput.length !== 4}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+              >
+                {t('confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{
         position: 'sticky',
         bottom: 0,
@@ -965,7 +1097,11 @@ export default function SalesPage() {
             disabled={totalPieces === 0 || submitting}
             className="btn btn-primary sales-actions-confirm"
           >
-            <Check size={16} />
+            {/* Purely informational — the price change itself was already
+                PIN-gated the moment it was typed (commitPrice above), so this
+                just tells the cashier at a glance that this sale carries a
+                renegotiated line before they tap confirm. */}
+            {hasPriceOverride ? <Lock size={16} /> : <Check size={16} />}
             <span>{submitting ? t('loading') : t('confirmSale')}</span>
           </button>
         </div>

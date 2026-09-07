@@ -232,6 +232,7 @@ export const translations = {
     // item 10 — PIN-gate text for deleting a debtor, distinct from Products'
     // deleteRequiresBlockCode (which is product-specific wording).
     deleteDebtorRequiresBlockCode: 'Qarzdorni o\'chirish uchun himoya kodini kiriting',
+    subtractDebtRequiresBlockCode: 'Qarzdan ayirish uchun himoya kodini kiriting',
     debtorDeleted: 'Qarzdor o\'chirildi',
     added: 'Qo\'shildi',
     // item 5 — label for a debtor's very first history entry when it's
@@ -413,6 +414,8 @@ export const translations = {
     requiredField: 'majburiy',
     imageSizeHint: 'JPG yoki PNG, tavsiya etilgan hajm — 2 MB gacha',
     deleteRequiresBlockCode: "Mahsulotni o'chirish uchun himoya kodini kiriting",
+    priceChangeRequiresBlockCode: 'Narxni o\'zgartirish uchun himoya kodini kiriting',
+    revenueChangeRequiresBlockCode: "Tushumni o'zgartirish uchun himoya kodini kiriting",
   },
   ru: {
     signIn: 'Вход',
@@ -633,6 +636,7 @@ export const translations = {
     deleteDebtorConfirm: 'Подтвердите удаление {name}?',
     deleteDebtorHistoryWarning: 'Это действие нельзя отменить — история долга тоже будет удалена навсегда.',
     deleteDebtorRequiresBlockCode: 'Введите защитный код для удаления должника',
+    subtractDebtRequiresBlockCode: 'Введите защитный код для списания долга',
     debtorDeleted: 'Должник удален',
     added: 'Добавлено',
     startingDebtLabel: 'Начальный долг',
@@ -807,6 +811,8 @@ export const translations = {
     requiredField: 'обязательно',
     imageSizeHint: 'JPG или PNG, рекомендуемый размер — до 2 МБ',
     deleteRequiresBlockCode: 'Введите защитный код для удаления товара',
+    priceChangeRequiresBlockCode: 'Введите защитный код для изменения цены',
+    revenueChangeRequiresBlockCode: 'Введите защитный код для изменения выручки',
   },
 }
 

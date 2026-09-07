@@ -20,13 +20,15 @@ import {
   parseQuantityInput,
 } from '@/lib/inventory'
 import dayjs from 'dayjs'
-import { ChevronLeft, ChevronRight, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp, X, Lock } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { Product, InventoryItem, ProductUnit } from '@/lib/types'
 import { formatMoney, formatInputAmount, parseFormattedAmount, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
+import { useAuthStore } from '@/lib/authStore'
+import { isBlockCodeDisabled } from '@/utils/blockCode'
 
 interface EnrichedItem {
   product: Product
@@ -107,6 +109,21 @@ export default function InventoryPage() {
   const [revenueInput, setRevenueInput] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  // Overriding the expected revenue away from what the list price implies is
+  // this screen's equivalent of Sales' per-line price renegotiation — gated
+  // behind the same blockCode PIN, same pattern as Sales/Products/Debtors.
+  // Unlike Sales (which gates the instant the field is typed), this gates at
+  // Save time: nothing here clears currentQtyInput/revenueInput while the
+  // PIN modal is open, so the values are simply re-read once the code checks
+  // out rather than needing a separate "pending edit" stash.
+  const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  const [blockDisabled, setBlockDisabledState] = useState(false)
+  useEffect(() => { setBlockDisabledState(isBlockCodeDisabled()) }, [])
+  const [showPinVerify, setShowPinVerify] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
+  const pinInputRef = useRef<HTMLInputElement | null>(null)
 
   const isPastDate = isPastBusinessDate(selectedDate)
   const isFutureDate = isFutureBusinessDate(selectedDate)
@@ -215,8 +232,6 @@ export default function InventoryPage() {
   const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput(''); setRevenueInput(null) }
 
   // Was not handled before - see useEscapeKey.ts.
-  useEscapeToClose([[!!selectedEntry, closeModal]])
-
   // Real bug fix: the raw value the user typed can exceed the day's opening
   // quantity. Block save + show the same inline message mobile already uses
   // in that case, rather than silently accepting a nonsensical "remaining".
@@ -225,7 +240,7 @@ export default function InventoryPage() {
     : 0
   const overCount = !!selectedEntry && isEditable && qtyGreaterThan(rawQtyInput, selectedEntry.opening)
 
-  const handleSave = async () => {
+  const execSave = async () => {
     if (!selectedEntry || !isEditable) return
     if (overCount) return
     setSaving(true)
@@ -269,6 +284,49 @@ export default function InventoryPage() {
       showToast(err instanceof Error ? err.message : t('saveError'), 'error')
     } finally { setSaving(false) }
   }
+
+  const handleSave = () => {
+    if (!selectedEntry || !isEditable || overCount) return
+    if (preview?.isOverridden && blockCode && !blockDisabled) {
+      setPinInput('')
+      setPinVerifyError(null)
+      setShowPinVerify(true)
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+      return
+    }
+    execSave()
+  }
+
+  // Deliberately not wrapped in useCallback: it closes over execSave (itself
+  // unmemoized, so it captures the current currentQtyInput/revenueInput on
+  // every render) — memoizing this against a narrower dep list would risk
+  // calling a stale execSave from an earlier render's closure.
+  const confirmPin = (value: string) => {
+    if (value === blockCode) {
+      setShowPinVerify(false)
+      setPinInput('')
+      setPinVerifyError(null)
+      execSave()
+    } else {
+      setPinVerifyError("Blok kod noto'g'ri")
+      setPinInput('')
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+    }
+  }
+
+  const cancelPin = () => {
+    setShowPinVerify(false)
+    setPinInput('')
+    setPinVerifyError(null)
+  }
+
+  // PIN sheet stacks on top of the entry modal (selectedEntry stays set while
+  // it's open) — ordered topmost-first so Escape dismisses just the PIN sheet
+  // first, matching useEscapeKey.ts's layering contract.
+  useEscapeToClose([
+    [showPinVerify, cancelPin],
+    [!!selectedEntry, closeModal],
+  ])
 
   const preview = useMemo(() => {
     if (!selectedEntry || !isEditable || overCount) return null
@@ -541,8 +599,19 @@ export default function InventoryPage() {
               <button
                 onClick={handleSave} disabled={saving || overCount}
                 className="btn btn-primary"
-                style={saved ? { display: 'none' } : overCount ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-              >{saving ? t('loading_data') : t('save')}</button>
+                style={saved
+                  ? { display: 'none' }
+                  : {
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      ...(overCount ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+                    }}
+              >
+                {/* Purely informational, like Sales' confirm button — the
+                    override itself is already PIN-gated in handleSave above,
+                    this just flags in advance that saving will ask for it. */}
+                {p?.isOverridden && <Lock size={14} />}
+                {saving ? t('loading_data') : t('save')}
+              </button>
             )}
             {saved && <span style={s.savedBadge}>{t('success')}</span>}
           </div>
@@ -589,6 +658,75 @@ export default function InventoryPage() {
         </>
       )}
       {selectedEntry && renderModal()}
+
+      {/* PIN Verification — gates an overridden expected-revenue save when a
+          blockCode is set, same pattern as Sales' per-line price gate. */}
+      {showPinVerify && (
+        <div style={overlay} onClick={cancelPin}>
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            padding: 24,
+            width: '100%',
+            maxWidth: 380,
+            border: '1px solid var(--color-border)',
+            textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
+              {t('revenueChangeRequiresBlockCode')}
+            </div>
+            <input
+              ref={pinInputRef}
+              type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={4}
+              placeholder="••••"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pinInput.length === 4) confirmPin(pinInput) }}
+              onFocus={(e) => e.target.select()}
+              style={{
+                width: '100%',
+                maxWidth: 200,
+                height: 56,
+                borderRadius: 12,
+                border: '1.5px solid var(--color-border)',
+                background: 'var(--color-bg)',
+                color: 'var(--color-text)',
+                fontSize: 26,
+                fontWeight: 700,
+                textAlign: 'center',
+                outline: 'none',
+                letterSpacing: 12,
+                caretColor: 'var(--color-primary)',
+                fontVariantNumeric: 'tabular-nums',
+                marginBottom: 16,
+              }}
+            />
+            {pinVerifyError ? (
+              <div style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 16, minHeight: 18 }}>{pinVerifyError}</div>
+            ) : (
+              <div style={{ minHeight: 18, marginBottom: 16 }} />
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={cancelPin} className="btn btn-secondary">{t('cancel')}</button>
+              <button
+                onClick={() => confirmPin(pinInput)}
+                disabled={pinInput.length !== 4}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+              >
+                {t('confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 

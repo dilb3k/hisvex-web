@@ -289,7 +289,17 @@ export const debtorsApi = {
   getById: (id: string) => api.get<Debtor>(`/debtors/${id}`),
   create: (data: Partial<Debtor>) => api.post<Debtor>('/debtors', data),
   update: (id: string, data: Partial<Debtor>) => api.put<Debtor>(`/debtors/${id}`, data),
-  adjust: (id: string, amount: number, note?: string) => api.post(`/debtors/${id}/adjust`, { amount, note }),
+  // Real bug fix: this sent only {amount, note} — the backend's
+  // adjustDebtSchema requires `type` ("add"|"subtract") and a *positive*
+  // amount, so every call from this screen (both directions) was rejected
+  // with a 400 before it ever reached the debtor. Desktop's client already
+  // does this correctly; mirrored here.
+  adjust: (id: string, amount: number, note?: string) =>
+    api.post(`/debtors/${id}/adjust`, {
+      amount: Math.abs(amount),
+      type: amount < 0 ? 'subtract' : 'add',
+      note,
+    }),
   delete: (id: string) => api.delete(`/debtors/${id}`),
 }
 

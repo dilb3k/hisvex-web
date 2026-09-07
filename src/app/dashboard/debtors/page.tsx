@@ -112,7 +112,12 @@ export default function DebtorsPage() {
   const [saving, setSaving] = useState(false)
 
   // item 10 — route Delete through the same PIN-gate pattern
-  // dashboard/products/page.tsx uses when a blockCode is set.
+  // dashboard/products/page.tsx uses when a blockCode is set. Also gates
+  // "subtract" (marking part of a debt paid) — reducing what someone owes
+  // with no payment actually collected is exactly as exploitable as
+  // deleting the debtor outright, so it shares the same PIN.
+  // "add" (recording a new charge) is deliberately left ungated — it's the
+  // routine, frequent action and doesn't give anything away.
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
   // Per-device "temporarily disable" toggle set on the Settings page.
   const [blockDisabled, setBlockDisabledState] = useState(false)
@@ -120,6 +125,11 @@ export default function DebtorsPage() {
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinVerifyError, setPinVerifyError] = useState<string | null>(null)
+  const [pinAction, setPinAction] = useState<'delete' | 'subtract' | null>(null)
+  // The amount to subtract once the PIN is confirmed — adjustAmount itself
+  // isn't reused because the user could keep typing in that field while the
+  // modal is open.
+  const [pendingSubtractAmount, setPendingSubtractAmount] = useState<number | null>(null)
   const pinInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -231,6 +241,7 @@ export default function DebtorsPage() {
   const handleDeleteConfirm = () => {
     if (!selectedDebtor || saving) return
     if (blockCode && !blockDisabled) {
+      setPinAction('delete')
       setPinInput('')
       setPinVerifyError(null)
       setShowPinVerify(true)
@@ -240,18 +251,46 @@ export default function DebtorsPage() {
     execDelete()
   }
 
+  // Actual "add"/"subtract" API call, split out from handleAdjust below so
+  // it can run either directly (no blockCode, or type === 'add') or after a
+  // successful PIN check for 'subtract'.
+  const execAdjust = useCallback(async (type: 'add' | 'subtract', amount: number) => {
+    if (!selectedDebtor) return
+    const adjAmount = type === 'subtract' ? -amount : amount
+    setSaving(true)
+    try {
+      await debtorsApi.adjust(selectedDebtor._id, adjAmount)
+      clearApiCache()
+      const { data } = await debtorsApi.getAll()
+      setDebtors(data)
+      const updated = data.find((d) => d._id === selectedDebtor._id)
+      if (updated) setSelectedDebtor(updated)
+      setAdjustAmount('')
+    } catch {
+      setAdjustError(t('error') || 'Xatolik yuz berdi')
+    } finally {
+      setSaving(false)
+    }
+  }, [selectedDebtor])
+
   const confirmPin = useCallback((value: string) => {
     if (value === blockCode) {
       setShowPinVerify(false)
       setPinInput('')
       setPinVerifyError(null)
-      execDelete()
+      if (pinAction === 'subtract') {
+        execAdjust('subtract', pendingSubtractAmount ?? 0)
+      } else {
+        execDelete()
+      }
+      setPinAction(null)
+      setPendingSubtractAmount(null)
     } else {
       setPinVerifyError("Blok kod noto'g'ri")
       setPinInput('')
       setTimeout(() => pinInputRef.current?.focus(), 60)
     }
-  }, [blockCode, execDelete])
+  }, [blockCode, execDelete, execAdjust, pinAction, pendingSubtractAmount])
 
   const handleAdjust = async (type: 'add' | 'subtract') => {
     if (!selectedDebtor || saving) return
@@ -268,21 +307,16 @@ export default function DebtorsPage() {
       setAdjustError('O\'chirilayotgan summa qarzdan katta')
       return
     }
-    const adjAmount = type === 'subtract' ? -amount : amount
-    setSaving(true)
-    try {
-      await debtorsApi.adjust(selectedDebtor._id, adjAmount)
-      clearApiCache()
-      const { data } = await debtorsApi.getAll()
-      setDebtors(data)
-      const updated = data.find((d) => d._id === selectedDebtor._id)
-      if (updated) setSelectedDebtor(updated)
-      setAdjustAmount('')
-    } catch {
-      setAdjustError(t('error') || 'Xatolik yuz berdi')
-    } finally {
-      setSaving(false)
+    if (type === 'subtract' && blockCode && !blockDisabled) {
+      setPinAction('subtract')
+      setPendingSubtractAmount(amount)
+      setPinInput('')
+      setPinVerifyError(null)
+      setShowPinVerify(true)
+      setTimeout(() => pinInputRef.current?.focus(), 60)
+      return
     }
+    await execAdjust(type, amount)
   }
 
   const handleAddSave = async () => {
@@ -349,7 +383,7 @@ export default function DebtorsPage() {
   // the delete-confirm dialog) - see useEscapeKey.ts. None of this app's
   // modals handled Escape at all before.
   useEscapeToClose([
-    [showPinVerify, () => setShowPinVerify(false)],
+    [showPinVerify, () => { setShowPinVerify(false); setPinAction(null); setPendingSubtractAmount(null) }],
     [showDeleteConfirm, () => { setShowDeleteConfirm(false); setSelectedDebtor(null) }],
     [showEditModal, () => { setShowEditModal(false); setSelectedDebtor(null) }],
     [showDetailModal, () => { setShowDetailModal(false); setSelectedDebtor(null) }],
@@ -932,9 +966,10 @@ export default function DebtorsPage() {
         </div>
       )}
 
-      {/* PIN Verification — gates Delete when a blockCode is set (item 10) */}
+      {/* PIN Verification — gates Delete and "subtract" when a blockCode is
+          set (item 10, extended to cover subtract). */}
       {showPinVerify && (
-        <div style={overlay} onClick={() => { setShowPinVerify(false) }}>
+        <div style={overlay} onClick={() => { setShowPinVerify(false); setPinAction(null); setPendingSubtractAmount(null) }}>
           <div style={{
             background: 'var(--color-surface)',
             borderRadius: 14,
@@ -948,7 +983,7 @@ export default function DebtorsPage() {
             <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
-              {t('deleteDebtorRequiresBlockCode')}
+              {pinAction === 'subtract' ? t('subtractDebtRequiresBlockCode') : t('deleteDebtorRequiresBlockCode')}
             </div>
             <input
               ref={pinInputRef}
@@ -991,7 +1026,7 @@ export default function DebtorsPage() {
               <div style={{ minHeight: 18, marginBottom: 16 }} />
             )}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowPinVerify(false)} className="btn btn-secondary">Bekor qilish</button>
+              <button onClick={() => { setShowPinVerify(false); setPinAction(null); setPendingSubtractAmount(null) }} className="btn btn-secondary">Bekor qilish</button>
               <button
                 onClick={() => confirmPin(pinInput)}
                 disabled={pinInput.length !== 4}
