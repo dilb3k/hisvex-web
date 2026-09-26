@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { authApi } from '@/lib/api'
+import { authApi, getStaleToken } from '@/lib/api'
 import { useAuthStore } from '@/lib/authStore'
 import { t } from '@/lib/i18n'
 import { formatPhone } from '@/lib/formatters'
+import { formatMoney, formatQuantity } from '@/lib/inventory'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 import { PasswordInput } from '@/components/PasswordInput'
 
@@ -53,6 +54,12 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [focusedField, setFocusedField] = useState<string | null>(null)
+  const [showProductPreview, setShowProductPreview] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [previewItems, setPreviewItems] = useState<
+    { productId: string; name: string; unit: string; sellPrice: number; currentQuantity: number }[]
+  >([])
   const setAuth = useAuthStore((s) => s.setAuth)
   const router = useRouter()
   const isLoginMode = mode === 'login'
@@ -134,6 +141,29 @@ export default function LoginPage() {
     }
   }
 
+  // "Old token" = whatever this device held right before another device
+  // logged into the same account and got it kicked (getStaleToken).
+  // Nothing to show if this device never had one — e.g. a brand new
+  // browser/profile trying this account for the first time.
+  const openProductPreview = async () => {
+    setShowProductPreview(true)
+    setPreviewLoading(true)
+    setPreviewError('')
+    try {
+      const staleToken = getStaleToken()
+      if (!staleToken) {
+        setPreviewError(t('productsPreviewEmpty'))
+        return
+      }
+      const { data } = await authApi.fetchProductPreview(staleToken)
+      setPreviewItems(data)
+    } catch (err: unknown) {
+      setPreviewError(err instanceof Error ? err.message : t('productsPreviewError'))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const switchMode = (next: 'login' | 'register') => {
     setMode(next)
     setPhoneVerifyStep(false)
@@ -145,7 +175,10 @@ export default function LoginPage() {
   }
 
   // Was not handled before - see useEscapeKey.ts.
-  useEscapeToClose([[showBusinessDayHelp, () => setShowBusinessDayHelp(false)]])
+  useEscapeToClose([
+    [showBusinessDayHelp, () => setShowBusinessDayHelp(false)],
+    [showProductPreview, () => setShowProductPreview(false)],
+  ])
 
   const inputStyle = (field: string): React.CSSProperties => ({
     width: '100%',
@@ -337,6 +370,22 @@ export default function LoginPage() {
                   opacity: loading ? 0.7 : 1,
                 }}
               >{t('cancel')}</button>
+
+              {/* Read-only escape hatch while stuck behind the phone gate:
+                  if this device still has the token it held before being
+                  kicked, it can peek at the account's current
+                  product/stock list without waiting for verification. See
+                  getStaleToken / authApi.fetchProductPreview. */}
+              <button
+                type="button"
+                onClick={openProductPreview}
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '8px 16px', border: 'none', background: 'none',
+                  color: C.primary, fontSize: 13.5, fontWeight: 700,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                }}
+              >{t('viewProductsPreview')}</button>
             </form>
           ) : (
             <>
@@ -558,6 +607,79 @@ export default function LoginPage() {
                 background: C.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}
             >{t('gotIt')}</button>
+          </div>
+        </div>
+      )}
+
+      {showProductPreview && (
+        <div
+          onClick={() => setShowProductPreview(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 420, maxHeight: '80vh',
+              display: 'flex', flexDirection: 'column',
+              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              padding: 22,
+            }}
+          >
+            <p style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: C.accent }}>
+              {t('productsPreviewTitle')}
+            </p>
+
+            {previewLoading ? (
+              <p style={{ margin: '0 0 14px', fontSize: 14, color: C.textSecondary, textAlign: 'center' }}>
+                {t('loading')}
+              </p>
+            ) : previewError ? (
+              <p style={{ margin: '0 0 14px', fontSize: 14, color: C.text }}>{previewError}</p>
+            ) : previewItems.length === 0 ? (
+              <p style={{ margin: '0 0 14px', fontSize: 14, color: C.text }}>
+                {t('productsPreviewNoProducts')}
+              </p>
+            ) : (
+              <div style={{ overflowY: 'auto', marginBottom: 14 }}>
+                {previewItems.map((item) => (
+                  <div
+                    key={item.productId}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 10, padding: '8px 0',
+                      borderBottom: `0.5px solid ${C.border}`,
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 600, color: C.text, flex: 1 }}>
+                      {item.name}
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: C.primary }}>
+                        {formatQuantity(item.currentQuantity, item.unit)}
+                      </span>
+                      <span style={{ fontSize: 12, color: C.textSecondary }}>
+                        {formatMoney(item.sellPrice)}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowProductPreview(false)}
+              style={{
+                width: '100%', padding: '11px 16px', borderRadius: 9, border: 'none',
+                background: C.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}
+            >{t('cancel')}</button>
           </div>
         </div>
       )}

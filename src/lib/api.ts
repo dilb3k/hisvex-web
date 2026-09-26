@@ -98,9 +98,39 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 let refreshPromise: Promise<'ok' | 'failed'> | null = null
 
+// Token this device held right before another device logged into the same
+// account and got it kicked (see SESSION_REPLACED below). Kept separately
+// from 'hisvex_token' so the normal login/logout lifecycle never touches it
+// — only the phone-verification page's read-only "view products" link uses
+// it, and only until it naturally expires.
+const STORAGE_KEY_STALE_TOKEN = 'hisvex_stale_token'
+
+export function getStaleToken(): string | null {
+  try { return localStorage.getItem(STORAGE_KEY_STALE_TOKEN) } catch { return null }
+}
+
+export function clearStaleToken(): void {
+  try { localStorage.removeItem(STORAGE_KEY_STALE_TOKEN) } catch {}
+}
+
 function handleSessionExpired(
-  error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>,
+  error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown; code?: string }; message?: string }>,
 ): Error {
+  const data = error.response?.data
+  const code =
+    data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object'
+      ? (data.error as { code?: string }).code
+      : undefined
+
+  // This device got kicked because another device logged into the same
+  // account — the token is dead for every normal call, but the server
+  // still honors it (authenticate({ allowStale: true })) for the read-only
+  // product/stock preview on the phone-verification page. Stash it before
+  // wiping the live token below.
+  if (code === 'SESSION_REPLACED' && apiToken) {
+    try { localStorage.setItem(STORAGE_KEY_STALE_TOKEN, apiToken) } catch {}
+  }
+
   apiToken = null
   apiRefreshToken = null
   cache.clear()
@@ -109,7 +139,6 @@ function handleSessionExpired(
   try { localStorage.removeItem('hisvex_refresh') } catch {}
   try { localStorage.removeItem('hisvex_user') } catch {}
   unauthorizedHandler?.()
-  const data = error.response?.data
   if (data && typeof data === 'object') {
     if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
       return new Error(data.error.message)
@@ -230,6 +259,15 @@ export const authApi = {
     ),
   getMe: () => api.get<User>('/auth/me'),
   updateMe: (data: Partial<User>) => api.put('/auth/me', data),
+  // Read-only product/stock list for the phone-verification page's "view
+  // products" link. Takes the stale token explicitly rather than relying
+  // on apiToken — same reasoning as logout()'s explicit token above: this
+  // call happens precisely when this device is NOT the authenticated one.
+  fetchProductPreview: (staleToken: string) =>
+    api.get<{ productId: string; name: string; unit: string; sellPrice: number; currentQuantity: number }[]>(
+      '/inventory-preview',
+      { headers: { Authorization: `Bearer ${staleToken}` } },
+    ),
 }
 
 export const productsApi = {
