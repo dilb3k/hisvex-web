@@ -20,7 +20,7 @@ import {
   parseQuantityInput,
 } from '@/lib/inventory'
 import dayjs from 'dayjs'
-import { ChevronLeft, ChevronRight, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp, X, Lock } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Package, Search, Archive, ShoppingCart, Wallet, TrendingUp, X, Lock } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
@@ -109,6 +109,11 @@ export default function InventoryPage() {
   const [revenueInput, setRevenueInput] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // The 5-cell KPI grid is the tallest thing above the product list — kept
+  // collapsed to a single summary line by default so the list gets that
+  // room back, and expandable on demand for the full breakdown (mirrors
+  // the mobile Inventory screen's equivalent toggle).
+  const [showStatsDetail, setShowStatsDetail] = useState(false)
 
   // Overriding the expected revenue away from what the list price implies is
   // this screen's equivalent of Sales' per-line price renegotiation — gated
@@ -408,22 +413,47 @@ export default function InventoryPage() {
     ]
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 8 }}>
-          {kpis.map((item, i) => (
-            <div key={i} style={kpiCard}>
-              <div style={{ ...kpiIcon, background: item.soft, color: item.color }}>{item.icon}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{item.label}</div>
-                <div style={{ fontSize: 'clamp(13px, 3.4vw, 16px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.2, overflowWrap: 'anywhere' }}>{item.value}</div>
-              </div>
+        <button
+          type="button"
+          onClick={() => setShowStatsDetail((v) => !v)}
+          aria-expanded={showStatsDetail}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            width: '100%', padding: '8px 2px', marginBottom: showStatsDetail ? 8 : 4,
+            background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
+            {t('currentInventory')}
+          </span>
+          {!showStatsDetail ? (
+            <span style={{ flex: 1, textAlign: 'right', fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', marginRight: 8 }}>
+              {t('remaining')}: {formatQuantityValue(totals.remaining, 'kg')}  ·  {t('sold')}: {formatQuantityValue(totals.sold, 'kg')}
+            </span>
+          ) : null}
+          {showStatsDetail ? <ChevronUp size={18} color="var(--color-text-secondary)" /> : <ChevronDown size={18} color="var(--color-text-secondary)" />}
+        </button>
+
+        {showStatsDetail ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 8 }}>
+              {kpis.map((item, i) => (
+                <div key={i} style={kpiCard}>
+                  <div style={{ ...kpiIcon, background: item.soft, color: item.color }}>{item.icon}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{item.label}</div>
+                    <div style={{ fontSize: 'clamp(13px, 3.4vw, 16px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.2, overflowWrap: 'anywhere' }}>{item.value}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        {/* Quiet equation caption — a single anchor sentence so it's clear why
-            these numbers relate the way they do, without adding clutter per-row. */}
-        <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '0 0 16px', textAlign: 'center' }}>
-          {t('inventoryEquationCaption')}
-        </p>
+            {/* Quiet equation caption — a single anchor sentence so it's clear why
+                these numbers relate the way they do, without adding clutter per-row. */}
+            <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '0 0 16px', textAlign: 'center' }}>
+              {t('inventoryEquationCaption')}
+            </p>
+          </>
+        ) : null}
       </>
     )
   }
