@@ -276,6 +276,15 @@ export const productsApi = {
   create: (data: Partial<Product>) => api.post<Product>('/products', data),
   update: (id: string, data: Partial<Product>) => api.put<Product>(`/products/${id}`, data),
   delete: (id: string) => api.delete(`/products/${id}`),
+  // Multipart upload to the R2-backed endpoint. Field name must be "image" to
+  // match the backend's `imageUpload.single("image")` middleware. No
+  // Content-Type header here — axios sets `multipart/form-data; boundary=...`
+  // itself from the FormData body, and overriding it drops the boundary.
+  uploadImage: (id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('image', file)
+    return api.post<{ product: Product }>(`/products/${id}/image`, formData)
+  },
 }
 
 export function getDeviceId(): string {
@@ -356,7 +365,10 @@ export const healthApi = {
 
 const IMAGE_HASH_REGEX = /^[a-f0-9]{64}$/
 
-export function resolveImageUrl(image?: string, imageHash?: string): string | undefined {
+// `imageUrl` (R2) wins when present; `image`/`imageHash` is the pre-R2-migration
+// fallback for products that haven't been touched since.
+export function resolveImageUrl(imageUrl?: string | null, image?: string, imageHash?: string): string | undefined {
+  if (imageUrl) return imageUrl
   const src = image || imageHash
   if (!src) return undefined
   if (src.startsWith('data:image/') || src.startsWith('https://') || src.startsWith('http://')) {

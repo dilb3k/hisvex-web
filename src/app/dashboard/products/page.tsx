@@ -621,9 +621,9 @@ export default function ProductsPage() {
                 onClick={() => openEdit(item)}
               >
                 <div className="product-card-img">
-                  {(item.image || item.imageHash) ? (
+                  {(item.imageUrl || item.image || item.imageHash) ? (
                     <img
-                      src={resolveImageUrl(item.image, item.imageHash)}
+                      src={resolveImageUrl(item.imageUrl, item.image, item.imageHash)}
                       alt=""
                       loading="lazy"
                     />
@@ -886,8 +886,11 @@ export default function ProductsPage() {
                   transition: 'border-color 0.15s, background 0.15s',
                 }}
               >
-                {form.image ? (
-                  <img src={resolveImageUrl(form.image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                {(form.image || editingProduct?.imageUrl) ? (
+                  // form.image (freshly picked file, or legacy image/imageHash seeded by
+                  // openEdit) wins when set; an R2-only product with neither falls back to
+                  // its imageUrl.
+                  <img src={resolveImageUrl(form.image ? undefined : editingProduct?.imageUrl, form.image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
                   <div style={{ textAlign: 'center' }}>
                     <Package size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 6, opacity: 0.5 }} />
@@ -1037,8 +1040,8 @@ export default function ProductsPage() {
                   width: 52, height: 52, borderRadius: 10, background: 'var(--color-bg)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
                 }}>
-                  {(restockProduct.image || restockProduct.imageHash) ? (
-                    <img src={resolveImageUrl(restockProduct.image, restockProduct.imageHash)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  {(restockProduct.imageUrl || restockProduct.image || restockProduct.imageHash) ? (
+                    <img src={resolveImageUrl(restockProduct.imageUrl, restockProduct.image, restockProduct.imageHash)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   ) : (
                     <Package size={24} color="var(--color-text-tertiary)" />
                   )}

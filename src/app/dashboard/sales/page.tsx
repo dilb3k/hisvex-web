@@ -625,9 +625,9 @@ export default function SalesPage() {
                       flexShrink: 0,
                       overflow: 'hidden',
                     }}>
-                      {(product?.image || product?.imageHash) ? (
+                      {(product?.imageUrl || product?.image || product?.imageHash) ? (
                         <img
-                          src={resolveImageUrl(product.image, product.imageHash)}
+                          src={resolveImageUrl(product.imageUrl, product.image, product.imageHash)}
                           alt=""
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />

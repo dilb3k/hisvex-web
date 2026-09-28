@@ -464,8 +464,8 @@ export default function InventoryPage() {
       <div style={s.card} className="list-row-hover" onClick={() => openModal(entry)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
           <div style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-            {(entry.product.image || entry.product.imageHash) ? (
-              <img src={resolveImageUrl(entry.product.image, entry.product.imageHash)} alt={entry.product.name} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
+            {(entry.product.imageUrl || entry.product.image || entry.product.imageHash) ? (
+              <img src={resolveImageUrl(entry.product.imageUrl, entry.product.image, entry.product.imageHash)} alt={entry.product.name} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
             ) : (
               <Package size={24} color="var(--color-text-tertiary)" />
             )}
@@ -497,8 +497,8 @@ export default function InventoryPage() {
         <div style={s.modal} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-              {(selectedEntry.product.image || selectedEntry.product.imageHash) ? (
-                <img src={resolveImageUrl(selectedEntry.product.image, selectedEntry.product.imageHash)} alt={selectedEntry.product.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} />
+              {(selectedEntry.product.imageUrl || selectedEntry.product.image || selectedEntry.product.imageHash) ? (
+                <img src={resolveImageUrl(selectedEntry.product.imageUrl, selectedEntry.product.image, selectedEntry.product.imageHash)} alt={selectedEntry.product.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} />
               ) : (
                 <Package size={22} color="var(--color-text-tertiary)" />
               )}

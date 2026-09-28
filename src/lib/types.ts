@@ -52,6 +52,8 @@ export interface Product {
   buyPrice?: number
   sellPrice?: number
   image?: string
+  /** R2-hosted photo URL. Takes priority over `image`/`imageHash` when present. */
+  imageUrl?: string | null
   displayIndex?: number
   barcodes?: string[]
   category?: string
