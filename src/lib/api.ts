@@ -10,10 +10,75 @@ interface InventoryResponse {
   summary?: { totalStart: number; totalCurrent: number; totalSold: number; totalRevenue: number; totalProfit: number }
 }
 
-const API_BASE_URL =
-  process.env.NODE_ENV === 'development'
-    ? process.env.NEXT_PUBLIC_API_BASE_URL || '/api'
-    : '/api'
+// Primary (Railway) / Backup (Render) — same codebase deployed twice against
+// the same MongoDB Atlas cluster. Calls used to go through Vercel's
+// `/api/:path*` rewrite to a single hardcoded backend (see vercel.json); that
+// indirection can't switch targets at request time, so failover requires
+// calling both backends' absolute URLs directly from the browser instead
+// (both already allow this origin via CORS — verified before this change).
+const PRIMARY_API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hisvex-api-production.up.railway.app/api'
+const BACKUP_API_URL = process.env.NEXT_PUBLIC_API_BACKUP_URL || 'https://hisvex-api.onrender.com/api'
+const HEALTH_RECHECK_INTERVAL_MS = 3 * 60 * 1000
+const DEFAULT_TIMEOUT_MS = 10000
+const HEAVY_TIMEOUT_MS = 60000
+
+// Kept relative in dev: the local dev server proxies `/api` to whatever a
+// developer is running locally (see next.config's dev-only rewrite), and
+// there's no second local backend to fail over to.
+const API_BASE_URL = process.env.NODE_ENV === 'development' ? (process.env.NEXT_PUBLIC_API_BASE_URL || '/api') : PRIMARY_API_URL
+
+let isPrimaryDown = false
+let healthRecheckTimer: ReturnType<typeof setInterval> | null = null
+
+function activeApiBaseUrl(): string {
+  if (process.env.NODE_ENV === 'development') return API_BASE_URL
+  return isPrimaryDown ? BACKUP_API_URL : PRIMARY_API_URL
+}
+
+// Once a request has actually failed over, ping Railway's own health check
+// (not through this same failover-aware client — a plain call, so a still-down
+// primary can't itself trigger another failover attempt) every 3 minutes.
+// Stops itself once primary answers again; a later failure restarts it.
+function scheduleHealthRecheck() {
+  if (healthRecheckTimer) return
+  healthRecheckTimer = setInterval(async () => {
+    if (!isPrimaryDown) return
+    try {
+      const res = await rawAxios.get(`${PRIMARY_API_URL}/health`, { timeout: 5000 })
+      if (res.status === 200) {
+        isPrimaryDown = false
+        if (healthRecheckTimer) { clearInterval(healthRecheckTimer); healthRecheckTimer = null }
+        console.log('[api] Primary (Railway) is back — switching off Render.')
+      }
+    } catch {
+      // Still down — leave isPrimaryDown as-is, try again next tick.
+    }
+  }, HEALTH_RECHECK_INTERVAL_MS)
+}
+
+// Only a server that's actually unreachable/down should fail over — a 4xx is
+// the client's own fault (bad input, expired auth, not found) and retrying it
+// against a second server would just get the same answer twice.
+function isFailoverTriggering(error: AxiosError): boolean {
+  const status = error.response?.status
+  if (status === 502 || status === 503 || status === 504) return true
+  // No response at all reached us (not even an error response) — a genuine
+  // connection-level failure, not our own client-side timeout (ECONNABORTED
+  // is handled separately below and deliberately excluded here: a slow-but-
+  // alive server isn't "down" the way a dead one returning 502/no-response is).
+  if (!error.response && error.code && error.code !== 'ECONNABORTED') return true
+  return false
+}
+
+// Image/file uploads and anything explicitly flagged heavy get more time
+// than a normal read/write — a 10s budget is generous for the rest and
+// keeps a genuinely dead primary from hanging a request for a full minute
+// before this client even gets to try the backup.
+function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) return true
+  const url = config.url ?? ''
+  return url.includes('/snapshots') || url.includes('/inventory/range') || url.includes('/stats')
+}
 
 let apiToken: string | null = null
 let apiRefreshToken: string | null = null
@@ -56,7 +121,6 @@ function cacheKey(config: { method?: string; url?: string; params?: any }) {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -82,6 +146,14 @@ api.interceptors.response.use(
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (apiToken) {
     config.headers.Authorization = `Bearer ${apiToken}`
+  }
+  // Re-evaluated on every dispatch (not baked into the axios instance) so a
+  // failover that happened mid-session immediately applies to the very next
+  // call, including one already in flight being retried by the response
+  // interceptor below.
+  config.baseURL = activeApiBaseUrl()
+  if (config.timeout === undefined) {
+    config.timeout = isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
   }
   if (config.method === 'get') {
     // Stamp the generation active at dispatch time so the response handler can tell
@@ -173,15 +245,34 @@ api.interceptors.response.use(
     return response
   },
   async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _failoverRetried?: boolean }
     const url = originalRequest?.url ?? ''
     const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
+
+    // Primary looks down (502/503/504, or unreachable outright) — resend this
+    // exact request (headers, auth, body — including a FormData upload, which
+    // browsers/RN keep re-readable, unlike a Node stream) against the backup
+    // immediately, before this error reaches the caller as a failure. Applies
+    // to auth calls too: a login shouldn't be stuck just because Railway is
+    // the one that's down. Only ever retried once per request either way, so
+    // a backup that's *also* down surfaces as a normal error instead of
+    // looping.
+    if (originalRequest && !originalRequest._failoverRetried && isFailoverTriggering(error)) {
+      originalRequest._failoverRetried = true
+      if (!isPrimaryDown) {
+        isPrimaryDown = true
+        scheduleHealthRecheck()
+        console.warn('[api] Primary (Railway) unreachable — failing over to Render for this and subsequent requests.')
+      }
+      originalRequest.baseURL = BACKUP_API_URL
+      return api(originalRequest)
+    }
 
     if (error.response?.status === 401 && !isAuthEndpoint && apiRefreshToken && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
-          const res = await rawAxios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken: apiRefreshToken })
+          const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: apiRefreshToken }, { timeout: DEFAULT_TIMEOUT_MS })
           const body = res.data
           const data = body && typeof body === 'object' && 'success' in body && 'data' in body ? body.data : body
           const newToken: string = data.token
@@ -375,7 +466,9 @@ export function resolveImageUrl(imageUrl?: string | null, image?: string, imageH
     return src
   }
   if (IMAGE_HASH_REGEX.test(src)) {
-    return `${API_BASE_URL}/products/image/${src}`
+    // Legacy pre-R2 images live in Mongo, not R2 — reachable from whichever
+    // backend is currently active since both read the same Atlas cluster.
+    return `${activeApiBaseUrl()}/products/image/${src}`
   }
   return undefined
 }
