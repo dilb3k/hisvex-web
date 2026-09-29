@@ -610,14 +610,43 @@ export default function StatisticsPage() {
     } finally { setAllTimeLoading(false) }
   }, [])
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!inventoryItems.length) return
-    // Column order/format matches the paper/Excel ledger businesses already
-    // keep (№, Tovar, Olingan/Sotilish narhi, Soni/Qoldi/Sotildi, then the
-    // four money columns Olingan/Umumiy/Sotilgan/Qoldi summa, Foyda) — not
-    // the app's own internal terminology, so an exported report drops
-    // straight into the same layout a bar owner is already used to.
-    const rows = [['№', 'Tovar', 'Olingan narhi', 'Sotilish narhi', 'Soni', 'Qoldi', 'Sotildi', 'Olingan summa', 'Umumiy summa', 'Sotilgan summa', 'Qoldi summasi', 'Foyda']]
+    // Column order matches the paper/Excel ledger businesses already keep
+    // (№, Tovar, Olingan/Sotilish narhi, Soni/Qoldi/Sotildi, then the four
+    // money columns Olingan/Umumiy/Sotilgan/Qoldi summa) — not the app's own
+    // internal terminology, so an exported report drops straight into the
+    // same layout a bar owner is already used to.
+    //
+    // Real fix: the last column is (sell - buy) * opening — the profit if
+    // every unit in today's OPENING stock sold, not what was actually sold.
+    // Plain "Foyda" reads as money already made; renamed to say plainly
+    // that it's the ceiling, not the realized number. XLSX (not CSV) so the
+    // header and this column can actually carry color, per the same
+    // request — CSV is plain text and can't.
+    const ExcelJS = (await import('exceljs')).default
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Hisobot')
+
+    const headers = [
+      '№', 'Tovar', 'Olingan narhi', 'Sotilish narhi', 'Soni', 'Qoldi', 'Sotildi',
+      'Olingan summa', 'Umumiy summa', 'Sotilgan summa', 'Qoldi summasi',
+      "Olinishi mumkin bo'lgan foyda",
+    ]
+    sheet.columns = [
+      { width: 5 }, { width: 28 }, { width: 14 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 10 },
+      { width: 16 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 24 },
+    ]
+
+    const headerRow = sheet.addRow(headers)
+    headerRow.height = 34
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF7C3AED' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+    })
+
+    const moneyCols = [3, 4, 8, 9, 10, 11, 12]
     let totalSoni = 0, totalQoldi = 0, totalSotildi = 0
     let totalOlinganSumma = 0, totalUmumiySumma = 0, totalSotilganSumma = 0, totalQoldiSumma = 0, totalFoyda = 0
     let idx = 0
@@ -636,11 +665,15 @@ export default function StatisticsPage() {
       const sotilganSumma = (item as { revenue?: number }).revenue ?? sold * sell
       const qoldiSumma = remaining * sell
       const foyda = (sell - buy) * opening
-      rows.push([
-        String(idx), name, String(buy), String(sell),
+
+      const row = sheet.addRow([
+        idx, name, buy, sell,
         formatQuantityValue(opening, unit), formatQuantityValue(remaining, unit), formatQuantityValue(sold, unit),
-        String(olinganSumma), String(umumiySumma), String(sotilganSumma), String(qoldiSumma), String(foyda),
+        olinganSumma, umumiySumma, sotilganSumma, qoldiSumma, foyda,
       ])
+      moneyCols.forEach(col => { row.getCell(col).numFmt = '#,##0' })
+      row.getCell(12).font = { bold: true, color: { argb: foyda >= 0 ? 'FF15803D' : 'FFDC2626' } }
+
       totalSoni += opening
       totalQoldi += remaining
       totalSotildi += sold
@@ -650,17 +683,26 @@ export default function StatisticsPage() {
       totalQoldiSumma += qoldiSumma
       totalFoyda += foyda
     }
-    rows.push([
-      '', 'Jami', '', '', String(totalSoni), String(totalQoldi), String(totalSotildi),
-      String(totalOlinganSumma), String(totalUmumiySumma), String(totalSotilganSumma), String(totalQoldiSumma), String(totalFoyda),
-    ])
 
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const totalRow = sheet.addRow([
+      '', 'Jami', '', '', totalSoni, totalQoldi, totalSotildi,
+      totalOlinganSumma, totalUmumiySumma, totalSotilganSumma, totalQoldiSumma, totalFoyda,
+    ])
+    totalRow.eachCell(cell => {
+      cell.font = { bold: true }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+    })
+    moneyCols.forEach(col => { totalRow.getCell(col).numFmt = '#,##0' })
+    totalRow.getCell(12).font = { bold: true, color: { argb: totalFoyda >= 0 ? 'FF15803D' : 'FFDC2626' } }
+
+    sheet.views = [{ state: 'frozen', ySplit: 1 }]
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `hisobot-${range.from}-${range.to}.csv`
+    a.download = `hisobot-${range.from}-${range.to}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }

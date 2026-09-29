@@ -13,6 +13,7 @@
     "@zxing/library": "^0.23.0",
     "axios": "^1.13.0",
     "dayjs": "^1.11.13",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.487.0",
     "next": "^15.3.1",
     "react": "^19.1.0",
