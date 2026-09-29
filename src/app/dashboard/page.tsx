@@ -453,7 +453,7 @@ function StatsLocked() {
         {t('statsLockedBody')}
       </p>
       <a
-        href="https://t.me/dilbek7011"
+        href="https://t.me/hisvex_bot"
         target="_blank"
         rel="noopener noreferrer"
         className="btn btn-primary"

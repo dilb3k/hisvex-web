@@ -49,7 +49,7 @@ export const translations = {
     businessDayStartHelpBody:
       'Bu — ombor hisobi va savdo qaysi soatdan boshlanishi.\n\nMisol 1: siz 7 kiritsangiz, kun hisobi ertalab soat 7:00 da boshlanadi. 16-aprel 07:00 dan 17-aprel 06:59 gacha qilingan savdolar 16-aprel uchun yoziladi.\n\nMisol 2: 0 kiritsangiz, kun hisobi yarim tunda (00:00) boshlanadi. Ya\'ni oddiy kalendar kuni kabi ishlaydi.\n\nMisol 3: 12 kiritsangiz, kun hisobi tushda (12:00) boshlanadi. Sotuvchi tunda ishlasa — tungi savdolar o\'sha kunga tegishli bo\'ladi.\n\nQancha kiritsangiz, kunlik statistika o\'sha soatdan yangi kunga o\'tadi.',
     contactAdminLink: 'Muammo yuzaga keldimi? Administrator bilan bog\'laning',
-    contactAdminTelegram: 'Telegram: @dilbek7011',
+    contactAdminTelegram: 'Telegram: @hisvex_bot',
     gotIt: 'Tushundim',
     loading: 'Iltimos kuting...',
     dashboard: 'Asosiy',
@@ -472,7 +472,7 @@ export const translations = {
     businessDayStartHelpBody:
       'Это время, с которого начинается складской учёт и продажи.\n\nПример 1: если вы введете 7, учёт дня начинается в 7:00 утра. Продажи с 16 апреля 07:00 до 17 апреля 06:59 будут записаны за 16 апреля.\n\nПример 2: если ввести 0, учёт начинается в полночь (00:00). То есть работает как обычный календарный день.\n\nПример 3: если ввести 12, учёт начинается в полдень (12:00). Если продавец работает ночью — ночные продажи будут относиться к этому дню.\n\nКакое бы время вы ни ввели, ежедневная статистика переходит на новый день в этот час.',
     contactAdminLink: 'Возникла проблема? Свяжитесь с администратором',
-    contactAdminTelegram: 'Telegram: @dilbek7011',
+    contactAdminTelegram: 'Telegram: @hisvex_bot',
     gotIt: 'Понятно',
     loading: 'Пожалуйста подождите...',
     dashboard: 'Главная',

@@ -712,7 +712,7 @@ export default function SettingsPage() {
         </div>
         <div style={groupStyle}>
           <a
-            href="https://t.me/dilbek7011"
+            href="https://t.me/hisvex_bot"
             target="_blank"
             rel="noopener noreferrer"
             style={{ ...rowStyle, borderBottom: 'none', textDecoration: 'none', transition: 'background 0.15s' }}
@@ -721,7 +721,7 @@ export default function SettingsPage() {
           >
             <span style={{ ...rowLabelStyle, color: '#0088cc' }}>
               <MessageCircle size={17} style={{ color: '#0088cc', flexShrink: 0 }} />
-              Telegram: @dilbek7011
+              Telegram: @hisvex_bot
             </span>
             <ChevronRight size={17} style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
           </a>
@@ -826,7 +826,7 @@ export default function SettingsPage() {
                       </div>
                       {!isActive && plan.key === 'bor' && (
                         <button
-                          onClick={() => window.open('https://t.me/dilbek7011', '_blank', 'noopener,noreferrer')}
+                          onClick={() => window.open('https://t.me/hisvex_bot', '_blank', 'noopener,noreferrer')}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                             padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
@@ -840,7 +840,7 @@ export default function SettingsPage() {
                       )}
                       {!isActive && plan.key === 'pro' && !isSuperAdmin && (
                         <button
-                          onClick={() => window.open('https://t.me/dilbek7011', '_blank', 'noopener,noreferrer')}
+                          onClick={() => window.open('https://t.me/hisvex_bot', '_blank', 'noopener,noreferrer')}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                             padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,

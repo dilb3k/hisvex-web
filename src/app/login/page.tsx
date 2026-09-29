@@ -171,7 +171,7 @@ export default function LoginPage() {
   }
 
   const openAdminContact = () => {
-    window.open('https://t.me/dilbek7011', '_blank', 'noopener,noreferrer')
+    window.open('https://t.me/hisvex_bot', '_blank', 'noopener,noreferrer')
   }
 
   // Was not handled before - see useEscapeKey.ts.
