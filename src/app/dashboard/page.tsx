@@ -612,30 +612,77 @@ export default function StatisticsPage() {
 
   const handleDownload = async () => {
     if (!inventoryItems.length) return
-    // Column order matches the paper/Excel ledger businesses already keep
-    // (№, Tovar, Olingan/Sotilish narhi, Soni/Qoldi/Sotildi, then the four
-    // money columns Olingan/Umumiy/Sotilgan/Qoldi summa) — not the app's own
-    // internal terminology, so an exported report drops straight into the
-    // same layout a bar owner is already used to.
+    // Real fix, not a styling pass: inventoryItems is one row per
+    // (product, day) — range.from/range.to can span a whole month, so the
+    // old version wrote one spreadsheet row per product PER DAY it had any
+    // entry, the same product repeated dozens of times. And its "Foyda"
+    // column, (sell - buy) * that day's opening stock, summed across many
+    // days double-counted the same unsold physical stock sitting there
+    // day after day — both the row explosion and the inflated number are
+    // real bugs, not just unclear labeling.
     //
-    // Real fix: the last column is (sell - buy) * opening — the profit if
-    // every unit in today's OPENING stock sold, not what was actually sold.
-    // Plain "Foyda" reads as money already made; renamed to say plainly
-    // that it's the ceiling, not the realized number. XLSX (not CSV) so the
-    // header and this column can actually carry color, per the same
-    // request — CSV is plain text and can't.
+    // One row per product for the whole selected period now, mirroring
+    // computeTotals()'s already-correct split just above: sold/revenue/
+    // profit are flow metrics, summed across every entry in range (a sale
+    // Monday and a sale Tuesday are two real events); remaining stock and
+    // its value are a point-in-time snapshot, taken from each product's
+    // most recent entry only, never summed.
+    type Agg = {
+      name: string
+      unit: ProductUnit
+      buy: number
+      sell: number
+      sold: number
+      revenue: number
+      profit: number
+      remaining: number
+      latestDate: string
+    }
+    const byProduct = new Map<string, Agg>()
+    for (const item of inventoryItems) {
+      const p = item.product
+      const id = p?._id || p?.id
+      if (!id) continue
+      const buy = resolveBuyPrice(item, p)
+      const sell = resolveSellPrice(item, p)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const currentQty = Math.max(item.currentQuantity ?? 0, 0)
+      const soldQty = item.sold ?? Math.max(opening - currentQty, 0)
+      const revenue = (item as { revenue?: number }).revenue ?? soldQty * sell
+      const profit = item.realizedProfit ?? soldQty * (sell - buy)
+
+      const cur = byProduct.get(id) ?? {
+        name: p?.name || 'Noma\'lum',
+        unit: normalizeUnit(item.unit ?? p?.unit),
+        buy, sell, sold: 0, revenue: 0, profit: 0, remaining: 0, latestDate: '',
+      }
+      cur.sold += soldQty
+      cur.revenue += revenue
+      cur.profit += profit
+      // Latest entry in range wins for price + remaining stock, same
+      // tie-break as computeTotals()'s latestByProduct.
+      if ((item.date ?? '') >= cur.latestDate) {
+        cur.latestDate = item.date ?? cur.latestDate
+        cur.buy = buy
+        cur.sell = sell
+        cur.remaining = currentQty
+      }
+      byProduct.set(id, cur)
+    }
+
     const ExcelJS = (await import('exceljs')).default
     const workbook = new ExcelJS.Workbook()
     const sheet = workbook.addWorksheet('Hisobot')
 
     const headers = [
-      '№', 'Tovar', 'Olingan narhi', 'Sotilish narhi', 'Soni', 'Qoldi', 'Sotildi',
-      'Olingan summa', 'Umumiy summa', 'Sotilgan summa', 'Qoldi summasi',
-      "Olinishi mumkin bo'lgan foyda",
+      '№', 'Tovar', 'Olingan narhi', 'Sotilish narhi',
+      'Sotilgan soni', 'Sotilgan summa', 'Sof foyda',
+      'Joriy qoldiq', "Qoldiq qiymati",
     ]
     sheet.columns = [
-      { width: 5 }, { width: 28 }, { width: 14 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 10 },
-      { width: 16 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 24 },
+      { width: 5 }, { width: 28 }, { width: 14 }, { width: 14 },
+      { width: 14 }, { width: 16 }, { width: 16 },
+      { width: 14 }, { width: 16 },
     ]
 
     const headerRow = sheet.addRow(headers)
@@ -646,54 +693,44 @@ export default function StatisticsPage() {
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
     })
 
-    const moneyCols = [3, 4, 8, 9, 10, 11, 12]
-    let totalSoni = 0, totalQoldi = 0, totalSotildi = 0
-    let totalOlinganSumma = 0, totalUmumiySumma = 0, totalSotilganSumma = 0, totalQoldiSumma = 0, totalFoyda = 0
+    const moneyCols = [3, 4, 6, 7, 9]
+    let totalSold = 0, totalRevenue = 0, totalProfit = 0, totalRemaining = 0, totalRemainingValue = 0
     let idx = 0
-    for (const item of inventoryItems) {
+    const sortedProducts = Array.from(byProduct.values()).sort((a, b) => b.revenue - a.revenue)
+    for (const p of sortedProducts) {
       idx += 1
-      const p = item.product
-      const name = p?.name || 'Noma\'lum'
-      const buy = resolveBuyPrice(item, p)
-      const sell = resolveSellPrice(item, p)
-      const unit = normalizeUnit(item.unit ?? p?.unit)
-      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
-      const remaining = roundQty(Math.max(item.currentQuantity ?? 0, 0))
-      const sold = item.sold ?? roundQty(Math.max(opening - remaining, 0))
-      const olinganSumma = opening * buy
-      const umumiySumma = opening * sell
-      const sotilganSumma = (item as { revenue?: number }).revenue ?? sold * sell
-      const qoldiSumma = remaining * sell
-      const foyda = (sell - buy) * opening
+      const sold = roundQty(p.sold)
+      const revenue = roundMoney(p.revenue)
+      const profit = roundMoney(p.profit)
+      const remaining = roundQty(p.remaining)
+      const remainingValue = roundMoney(remaining * p.sell)
 
       const row = sheet.addRow([
-        idx, name, buy, sell,
-        formatQuantityValue(opening, unit), formatQuantityValue(remaining, unit), formatQuantityValue(sold, unit),
-        olinganSumma, umumiySumma, sotilganSumma, qoldiSumma, foyda,
+        idx, p.name, p.buy, p.sell,
+        formatQuantityValue(sold, p.unit), revenue, profit,
+        formatQuantityValue(remaining, p.unit), remainingValue,
       ])
       moneyCols.forEach(col => { row.getCell(col).numFmt = '#,##0' })
-      row.getCell(12).font = { bold: true, color: { argb: foyda >= 0 ? 'FF15803D' : 'FFDC2626' } }
+      row.getCell(7).font = { bold: true, color: { argb: profit >= 0 ? 'FF15803D' : 'FFDC2626' } }
 
-      totalSoni += opening
-      totalQoldi += remaining
-      totalSotildi += sold
-      totalOlinganSumma += olinganSumma
-      totalUmumiySumma += umumiySumma
-      totalSotilganSumma += sotilganSumma
-      totalQoldiSumma += qoldiSumma
-      totalFoyda += foyda
+      totalSold += sold
+      totalRevenue += revenue
+      totalProfit += profit
+      totalRemaining += remaining
+      totalRemainingValue += remainingValue
     }
 
     const totalRow = sheet.addRow([
-      '', 'Jami', '', '', totalSoni, totalQoldi, totalSotildi,
-      totalOlinganSumma, totalUmumiySumma, totalSotilganSumma, totalQoldiSumma, totalFoyda,
+      '', 'Jami', '', '',
+      totalSold, totalRevenue, totalProfit,
+      totalRemaining, totalRemainingValue,
     ])
     totalRow.eachCell(cell => {
       cell.font = { bold: true }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
     })
     moneyCols.forEach(col => { totalRow.getCell(col).numFmt = '#,##0' })
-    totalRow.getCell(12).font = { bold: true, color: { argb: totalFoyda >= 0 ? 'FF15803D' : 'FFDC2626' } }
+    totalRow.getCell(7).font = { bold: true, color: { argb: totalProfit >= 0 ? 'FF15803D' : 'FFDC2626' } }
 
     sheet.views = [{ state: 'frozen', ySplit: 1 }]
 
