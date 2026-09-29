@@ -823,25 +823,21 @@ export default function StatisticsPage() {
               {
                 icon: <Wallet size={18} />, label: t('soldValue'),
                 value: formatMoney(totals.revenue),
-                sub: overallTotals ? `${t('soldPieces')}: ${formatQuantityValue(overallTotals.soldItems, 'kg')}` : undefined,
                 color: 'var(--color-metric-revenue)', soft: 'var(--color-metric-revenue-soft)',
               },
               {
                 icon: <TrendingUp size={18} />, label: t('netProfit'),
                 value: formatMoney(totals.profit),
-                sub: `${t('marginPercent')}: ${margin}%`,
                 color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)',
               },
               {
                 icon: <ShoppingCart size={18} />, label: t('soldPieces'),
                 value: formatQuantityValue(totals.sold, 'kg'),
-                sub: `${t('soldValue')}: ${formatMoney(totals.revenue)}`,
                 color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)',
               },
               {
                 icon: <Archive size={18} />, label: t('sellingNow'),
                 value: overallTotals ? formatQuantityValue(overallTotals.remainingItems, 'kg') : '0',
-                sub: overallTotals ? `${t('remainingStockValue')}: ${formatMoney(overallTotals.stockValue)}` : undefined,
                 color: 'var(--color-violet)', soft: 'rgba(139,92,246,0.14)',
               },
             ].map((item, i) => (
@@ -850,9 +846,6 @@ export default function StatisticsPage() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{item.label}</div>
                   <div style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3, overflowWrap: 'anywhere' }}>{item.value}</div>
-                  {item.sub && (
-                    <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 3, overflowWrap: 'anywhere' }}>{item.sub}</div>
-                  )}
                 </div>
               </div>
             ))}

@@ -59,7 +59,10 @@ export const inputBase: CSSProperties = {
   border: '1.5px solid var(--color-border)',
   background: 'var(--color-bg)',
   color: 'var(--color-text)',
-  fontSize: 14,
+  // 16px, not 14 — anything smaller makes iOS Safari force a page zoom on
+  // focus (its auto-zoom threshold), which then needs a manual pinch-out
+  // to undo. 16px sits just above that line.
+  fontSize: 16,
   outline: 'none',
   width: '100%',
   transition: 'border-color 0.2s, box-shadow 0.2s',

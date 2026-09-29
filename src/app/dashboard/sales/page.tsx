@@ -477,7 +477,7 @@ export default function SalesPage() {
     border: '1px solid var(--color-border)',
     background: 'var(--color-bg)',
     color: 'var(--color-text)',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 600,
     fontFamily: 'inherit',
     outline: 'none',
@@ -613,7 +613,12 @@ export default function SalesPage() {
                     overflow: 'hidden',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '12px 14px' }}>
+                  {/* cart-row-flex/-body classes: below 460px (see globals.css)
+                      the image stays put on the left while the name/price/
+                      remaining text and the qty stepper — siblings of the
+                      image here, not each other's — stack into a column
+                      instead of all three fighting for room on one line. */}
+                  <div className="cart-row-flex" style={{ display: 'flex', gap: 13, padding: '12px 14px' }}>
                     <div style={{
                       width: 54,
                       height: 54,
@@ -636,6 +641,7 @@ export default function SalesPage() {
                       )}
                     </div>
 
+                    <div className="cart-row-body" style={{ display: 'flex', flex: 1, minWidth: 0, gap: 8 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{
                         fontSize: 14.5,
@@ -676,8 +682,8 @@ export default function SalesPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 36,
-                          height: 36,
+                          width: 40,
+                          height: 40,
                           borderRadius: 9,
                           border: `1px solid ${cartQty > 0 ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: cartQty > 0 ? 'var(--color-primary-soft)' : 'transparent',
@@ -754,8 +760,8 @@ export default function SalesPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 36,
-                          height: 36,
+                          width: 40,
+                          height: 40,
                           borderRadius: 9,
                           border: `1px solid ${canAdd ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: canAdd ? 'var(--color-primary-soft)' : 'transparent',
@@ -767,6 +773,7 @@ export default function SalesPage() {
                       >
                         <Plus size={17} />
                       </button>
+                    </div>
                     </div>
                   </div>
 

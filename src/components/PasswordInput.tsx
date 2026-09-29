@@ -24,7 +24,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, Omit<React.InputHTMLAt
           {...props}
           ref={ref}
           type={visible ? 'text' : 'password'}
-          style={{ ...style, paddingRight: 40, boxSizing: 'border-box' }}
+          style={{ ...style, paddingRight: 44, boxSizing: 'border-box' }}
         />
         <button
           type="button"
@@ -36,11 +36,11 @@ export const PasswordInput = forwardRef<HTMLInputElement, Omit<React.InputHTMLAt
           aria-label={visible ? t('hidePassword') : t('showPassword')}
           style={{
             position: 'absolute',
-            right: 4,
+            right: 2,
             top: '50%',
             transform: 'translateY(-50%)',
-            width: 30,
-            height: 30,
+            width: 40,
+            height: 40,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

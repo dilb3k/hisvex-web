@@ -55,7 +55,7 @@ function getStockStatus(remaining: number) {
 const s: Record<string, React.CSSProperties> = {
   title: { fontSize: 20, fontWeight: 700 },
   dateNav: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, justifyContent: 'center' },
-  dateNavBtn: { width: 34, height: 34, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s, border-color 0.15s' },
+  dateNavBtn: { width: 40, height: 40, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s, border-color 0.15s' },
   dateDisplay: { display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', userSelect: 'none', padding: '4px 16px' },
   dateText: { fontSize: 15, fontWeight: 700, color: 'var(--color-text)', lineHeight: '20px' },
   weekdayText: { fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: '16px' },
@@ -67,7 +67,7 @@ const s: Record<string, React.CSSProperties> = {
   fieldRow: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--color-border)' },
   fieldLabel: { fontSize: 13, color: 'var(--color-text-secondary)' },
   fieldValue: { fontSize: 13, fontWeight: 600 },
-  modalInput: { width: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 13, textAlign: 'right', outline: 'none' },
+  modalInput: { width: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 16, textAlign: 'right', outline: 'none' },
   previewBox: { marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--color-bg)', border: '1px solid var(--color-border)' },
   savedBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, background: 'var(--color-success)', color: '#fff', fontSize: 11, fontWeight: 600, animation: 'fadeIn 0.2s ease' },
   spinnerWrap: { display: 'flex', justifyContent: 'center', padding: 80 },

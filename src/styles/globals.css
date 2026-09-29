@@ -149,6 +149,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     font-size: 17px;
     font-weight: 600;
     color: var(--color-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .mobile-header-actions {
@@ -158,8 +162,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .mobile-header-btn {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     border: none;
     background: var(--color-surface-hover);
@@ -235,6 +239,44 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .page-actions {
     flex-wrap: wrap;
     flex-shrink: 1;
+  }
+}
+
+.hour-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+
+@media (max-width: 380px) {
+  .hour-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Sales cart row (src/app/dashboard/sales/page.tsx): below 460px the image
+   stays fixed on the left while the name/price/remaining text and the qty
+   stepper — its siblings, wrapped together in .cart-row-body — stack into a
+   column instead of all three fighting for room on one line. Mirrors the
+   same fix already made on the mobile app's own Sales screen. Base rules
+   here keep the >460px layout identical to before (both were previously
+   set inline as align-items: center). */
+.cart-row-flex,
+.cart-row-body {
+  align-items: center;
+}
+
+@media (max-width: 460px) {
+  .cart-row-flex {
+    align-items: flex-start;
+  }
+  .cart-row-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
   }
 }
 
@@ -664,7 +706,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 13.5px;
+  /* 16px avoids iOS Safari's auto-zoom-on-focus for inputs under 16px */
+  font-size: 16px;
   outline: none;
   font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;

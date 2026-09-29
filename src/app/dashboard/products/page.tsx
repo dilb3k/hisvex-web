@@ -22,7 +22,7 @@ import {
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
-import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X, Layers, Wallet } from 'lucide-react'
+import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import type { Product, ProductUnit } from '@/lib/types'
 import {
@@ -37,8 +37,6 @@ import {
   formatMoney,
   formatInputAmount,
   parseFormattedAmount,
-  kpiCard,
-  kpiIcon,
 } from '@/lib/sharedStyles'
 import { formatPhone } from '@/lib/formatters'
 import { isBlockCodeDisabled } from '@/utils/blockCode'
@@ -227,21 +225,6 @@ export default function ProductsPage() {
       // each screen.
       .sort(compareProducts)
   }, [products, debouncedSearch])
-
-  // KPI row totals (item 2) — computed over the full catalog, independent of
-  // the current search filter, same as the totals shown on the Inventory KPI
-  // row. Low-stock is "at/below the Kam threshold" (<=5), which includes
-  // out-of-stock items too.
-  const kpiTotals = useMemo(() => {
-    let lowStock = 0
-    let stockValue = 0
-    for (const p of products) {
-      const qty = p.quantity ?? 0
-      if (qty <= 5) lowStock++
-      stockValue += qty * resolveSellPrice(p, p)
-    }
-    return { totalSku: products.length, lowStock, stockValue }
-  }, [products])
 
   const previewQty = parseQuantityInput(form.quantity, form.unit)
   const previewBuy = parseFormattedAmount(form.buyPrice)
@@ -565,36 +548,6 @@ export default function ProductsPage() {
         <ErrorBanner onRetry={fetchProducts} />
       ) : (
         <>
-          {/* KPI row (item 2): total SKU count and low-stock count use the
-              qty-count metric-identity color; total stock value uses the
-              revenue metric-identity color (stock value is closest in spirit
-              to "revenue" of the three tracked metrics). Low-stock is a
-              status signal, not a tracked metric, so it stays on the warning
-              color instead. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 16 }}>
-            <div style={kpiCard}>
-              <div style={{ ...kpiIcon, background: 'var(--color-metric-qty-soft)', color: 'var(--color-metric-qty)' }}><Layers size={18} /></div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('totalSkuCount')}</div>
-                <div style={{ fontSize: 'clamp(13px, 3.4vw, 16px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{kpiTotals.totalSku}</div>
-              </div>
-            </div>
-            <div style={kpiCard}>
-              <div style={{ ...kpiIcon, background: 'rgba(245,158,11,0.15)', color: 'var(--color-warning)' }}><AlertTriangle size={18} /></div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('lowStockCount')}</div>
-                <div style={{ fontSize: 'clamp(13px, 3.4vw, 16px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{kpiTotals.lowStock}</div>
-              </div>
-            </div>
-            <div style={kpiCard}>
-              <div style={{ ...kpiIcon, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}><Wallet size={18} /></div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('stockValueLabel')}</div>
-                <div style={{ fontSize: 'clamp(13px, 3.4vw, 16px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.2, overflowWrap: 'anywhere' }}>{formatMoney(kpiTotals.stockValue)}</div>
-              </div>
-            </div>
-          </div>
-
           {sortedProducts.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon"><Package size={24} /></div>
@@ -697,7 +650,7 @@ export default function ProductsPage() {
                     className="btn btn-danger btn-icon"
                     title={t('delete')}
                     aria-label={t('delete')}
-                    style={{ width: 34, height: 34 }}
+                    style={{ width: 40, height: 40 }}
                   >
                     <Trash2 size={16} color="#fff" />
                   </button>
@@ -707,7 +660,7 @@ export default function ProductsPage() {
                   className="icon-ghost-btn"
                   title={t('close')}
                   aria-label={t('close')}
-                  style={{ width: 34, height: 34, borderRadius: 8 }}
+                  style={{ width: 40, height: 40, borderRadius: 8 }}
                 >
                   <X size={18} />
                 </button>
@@ -1028,7 +981,7 @@ export default function ProductsPage() {
                 className="icon-ghost-btn"
                 title={t('close')}
                 aria-label={t('close')}
-                style={{ width: 34, height: 34, borderRadius: 8 }}
+                style={{ width: 40, height: 40, borderRadius: 8 }}
               ><X size={18} /></button>
             </div>
             <div style={modalBody}>

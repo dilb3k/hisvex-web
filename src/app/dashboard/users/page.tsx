@@ -750,7 +750,7 @@ const inputStyle: React.CSSProperties = {
   border: '1.5px solid var(--color-border)',
   background: 'var(--color-bg)',
   color: 'var(--color-text)',
-  fontSize: 14,
+  fontSize: 16,
   outline: 'none',
   transition: 'border-color 0.2s, box-shadow 0.2s',
 }
@@ -784,11 +784,22 @@ function AdminFormModal({
   // Mounted only while open, so Escape always closes this modal.
   useEscapeToClose([[true, onClose]])
 
-  const canSubmit = !saving && !!username.trim() && (isEdit || password.length >= 6)
+  // Phone number is required when creating: it's the only thing the
+  // "another device is already signed in" login check has to compare
+  // against (phoneVerificationRequired short-circuits to false with no
+  // phone_number on file) — an admin created without one has that
+  // protection silently disabled on every platform. Not re-required on
+  // edit so existing admins aren't blocked from unrelated changes.
+  const hasPhone = !!phoneNumber && phoneNumber.replace(/\D/g, '').length >= 7
+  const canSubmit = !saving && !!username.trim() && (isEdit || (password.length >= 6 && hasPhone))
 
   const handleSubmit = async () => {
     if (!username.trim()) return
     if (!isEdit && password.length < 6) return
+    if (!isEdit && !hasPhone) {
+      showToast(t('phoneRequired'), 'error')
+      return
+    }
     setSaving(true)
     try {
       if (isEdit) {
@@ -797,7 +808,7 @@ function AdminFormModal({
         if (phoneNumber && phoneNumber !== '+998') payload.phone_number = phoneNumber.replace(/\D/g, '')
         await adminsApi.update(admin!._id, payload)
       } else {
-        await adminsApi.create(username.trim(), password, tier || 'bor', (phoneNumber || '').replace(/\D/g, '') || undefined)
+        await adminsApi.create(username.trim(), password, tier || 'bor', phoneNumber.replace(/\D/g, ''))
       }
       onSaved()
     } catch (err) {
@@ -850,7 +861,7 @@ function AdminFormModal({
             className="icon-ghost-btn"
             title={t('close')}
             aria-label={t('close')}
-            style={{ width: 34, height: 34, borderRadius: 9 }}
+            style={{ width: 40, height: 40, borderRadius: 9 }}
           >
             <X size={20} />
           </button>
@@ -909,7 +920,10 @@ function AdminFormModal({
               )}
             </div>
             <div>
-              <label style={labelStyle}>{t('phoneNumber')}</label>
+              <label style={labelStyle}>
+                {t('phoneNumber')}
+                {!isEdit && <span style={{ color: 'var(--color-danger)', marginLeft: 3, fontWeight: 700 }}>*</span>}
+              </label>
               <input
                 type="tel"
                 value={phoneNumber}
@@ -917,6 +931,11 @@ function AdminFormModal({
                 style={inputStyle}
                 placeholder={t('phoneNumberPlaceholder')}
               />
+              {!isEdit && (
+                <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '4px 0 0' }}>
+                  {t('adminPhoneRequiredHint')}
+                </p>
+              )}
             </div>
             <div>
               <label style={labelStyle}>{t('tier')}</label>

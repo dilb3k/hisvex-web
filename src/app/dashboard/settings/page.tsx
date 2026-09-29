@@ -986,13 +986,7 @@ export default function SettingsPage() {
 
               {/* Real fix: hour is now picked directly from a 24-cell grid
                   instead of stepping through +/- one hour at a time. */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(6, 1fr)',
-                gap: 6,
-                padding: 12,
-                borderRadius: 10,
-                background: 'var(--color-bg)',
+              <div className="hour-grid" style={{
                 marginBottom: 16,
               }}>
                 {Array.from({ length: 24 }, (_, h) => h).map((h) => {
@@ -1002,6 +996,7 @@ export default function SettingsPage() {
                       key={h}
                       onClick={() => setEditingHour(h)}
                       style={{
+                        minHeight: 40,
                         padding: '8px 0',
                         borderRadius: 7,
                         border: selected ? 'none' : '1px solid var(--color-border)',

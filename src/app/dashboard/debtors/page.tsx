@@ -33,14 +33,14 @@ const RequiredMark = () => (
 )
 
 const modalCloseBtnStyle: React.CSSProperties = {
-  width: 34,
-  height: 34,
+  width: 40,
+  height: 40,
   borderRadius: 8,
 }
 
 const headerIconBtnStyle: React.CSSProperties = {
-  width: 34,
-  height: 34,
+  width: 40,
+  height: 40,
   borderRadius: 8,
   border: 'none',
   background: 'var(--color-bg)',
