@@ -812,45 +812,6 @@ export default function StatisticsPage() {
             loading={chartIsLoading}
           />
 
-          {/* KPI cards — realized numbers only, solid-filled cards.
-              Profit alone did not answer the two questions actually asked of
-              this screen every day: how much has been sold, and how much is
-              still on the shelf waiting to sell. Both now sit next to it,
-              each card carrying the money figure under the quantity so the
-              pieces and the so'm are never read apart. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 20 }}>
-            {[
-              {
-                icon: <Wallet size={18} />, label: t('soldValue'),
-                value: formatMoney(totals.revenue),
-                color: 'var(--color-metric-revenue)', soft: 'var(--color-metric-revenue-soft)',
-              },
-              {
-                icon: <TrendingUp size={18} />, label: t('netProfit'),
-                value: formatMoney(totals.profit),
-                color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)',
-              },
-              {
-                icon: <ShoppingCart size={18} />, label: t('soldPieces'),
-                value: formatQuantityValue(totals.sold, 'kg'),
-                color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)',
-              },
-              {
-                icon: <Archive size={18} />, label: t('sellingNow'),
-                value: overallTotals ? formatQuantityValue(overallTotals.remainingItems, 'kg') : '0',
-                color: 'var(--color-violet)', soft: 'rgba(139,92,246,0.14)',
-              },
-            ].map((item, i) => (
-              <div key={i} style={kpiCard}>
-                <div style={{ ...kpiIcon, background: item.soft, color: item.color }}>{item.icon}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{item.label}</div>
-                  <div style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 800, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3, overflowWrap: 'anywhere' }}>{item.value}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
           {/* Section B ("Ombordagi holat") was removed per feedback — its 3
               numbers (remaining pieces/value, potential profit) are now
               fully covered by the "To'liq statistika" full-breakdown card
