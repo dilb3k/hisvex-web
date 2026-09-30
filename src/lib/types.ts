@@ -39,7 +39,19 @@ export interface AuthPhoneVerification {
   message?: string
 }
 
-export type AuthResponse = AuthSuccess | AuthPhoneVerification
+// Stronger session-conflict path than AuthPhoneVerification above: an actual
+// single-use OTP sent via the account's linked Telegram (see
+// comp-bar-server's auth.service.ts#login), not just re-typing the phone
+// number back. Only returned when the user has Telegram linked; otherwise
+// the server falls back to AuthPhoneVerification unchanged.
+export interface AuthOtpChallenge {
+  requiresVerification: true
+  verificationType: 'PHONE_OTP'
+  sessionChallengeId: string
+  message?: string
+}
+
+export type AuthResponse = AuthSuccess | AuthPhoneVerification | AuthOtpChallenge
 
 export type ProductUnit = 'dona' | 'kg'
 

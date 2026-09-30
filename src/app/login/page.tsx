@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { authApi, getStaleToken } from '@/lib/api'
@@ -51,6 +51,15 @@ export default function LoginPage() {
   const [showBusinessDayHelp, setShowBusinessDayHelp] = useState(false)
   const [phoneVerifyStep, setPhoneVerifyStep] = useState(false)
   const [maskedPhone, setMaskedPhone] = useState('')
+  // Stronger session-conflict path than phoneVerifyStep above — an actual
+  // OTP sent via the account's linked Telegram (see AuthOtpChallenge in
+  // types.ts). Separate step/state since the two can't both be active and
+  // render very differently (timer + 6-digit code vs. re-typing a phone).
+  const [otpStep, setOtpStep] = useState(false)
+  const [otpChallengeId, setOtpChallengeId] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const OTP_TTL_SECONDS = 180
+  const [otpSecondsLeft, setOtpSecondsLeft] = useState(OTP_TTL_SECONDS)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [focusedField, setFocusedField] = useState<string | null>(null)
@@ -94,11 +103,22 @@ export default function LoginPage() {
     try {
       if (isLoginMode) {
         const { data } = await authApi.login(username.trim(), password)
+        if (data && 'requiresVerification' in data) {
+          setOtpChallengeId(data.sessionChallengeId)
+          setOtpCode('')
+          setOtpSecondsLeft(OTP_TTL_SECONDS)
+          setOtpStep(true)
+          return
+        }
         if (data && 'needsPhoneVerification' in data) {
           setMaskedPhone(data.maskedPhone)
           setPhoneVerifyStep(true)
           return
         }
+        // Positive check (has `token`), not just "not the other two branches"
+        // — a third AuthResponse variant can be added later without this
+        // silently mis-narrowing again.
+        if (!data || !('token' in data)) return
         setAuth(data.token, data.refreshToken, data.user)
         goHome(data.user)
       } else {
@@ -135,6 +155,55 @@ export default function LoginPage() {
       goHome(data.user)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('phoneRequired')
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Ticks otpSecondsLeft down to 0 while otpStep is active — a plain
+  // setInterval, not tied to the actual challenge expiry on the server (the
+  // server is the real authority; this is just the UI countdown matching its
+  // known 3-minute TTL so the user isn't left guessing).
+  useEffect(() => {
+    if (!otpStep) return
+    if (otpSecondsLeft <= 0) return
+    const id = setTimeout(() => setOtpSecondsLeft((s) => s - 1), 1000)
+    return () => clearTimeout(id)
+  }, [otpStep, otpSecondsLeft])
+
+  const otpExpired = otpStep && otpSecondsLeft <= 0
+
+  const resetToLogin = () => {
+    setPhoneVerifyStep(false)
+    setOtpStep(false)
+    setOtpChallengeId('')
+    setOtpCode('')
+    setError('')
+  }
+
+  const handleOtpVerify = async () => {
+    if (otpExpired) {
+      setError(t('otpExpiredMessage'))
+      return
+    }
+    if (otpCode.length !== 6) {
+      setError(t('otpCodeLabel'))
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const { data } = await authApi.verifySessionChallenge(otpChallengeId, otpCode)
+      setOtpStep(false)
+      setError(t('sessionTakenOver'))
+      setAuth(data.token, data.refreshToken, data.user)
+      goHome(data.user)
+    } catch (err: unknown) {
+      // The backend's own message already carries the useful detail here
+      // (e.g. "Kod noto'g'ri. Qolgan urinishlar: 2", or the 410/429 wording)
+      // — surfaced as-is rather than replaced with a generic string.
+      const message = err instanceof Error ? err.message : t('otpCodeLabel')
       setError(message)
     } finally {
       setLoading(false)
@@ -292,7 +361,9 @@ export default function LoginPage() {
             margin: '0 0 24px', fontSize: 14, color: C.textSecondary,
             letterSpacing: 0.3, textAlign: 'center',
           }}>
-            {phoneVerifyStep
+            {otpStep
+              ? t('otpVerifyTitle')
+              : phoneVerifyStep
               ? t('verifyPhone')
               : isLoginMode ? t('signInToSystem') : t('createAccount')}
           </p>
@@ -301,7 +372,84 @@ export default function LoginPage() {
           borderRadius: 16, border: `1px solid ${C.border}`,
           background: C.surface, padding: 20,
         }}>
-          {phoneVerifyStep ? (
+          {otpStep ? (
+            <form onSubmit={(e) => { e.preventDefault(); handleOtpVerify() }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {error ? (
+                <div style={{
+                  borderRadius: 10, padding: 12,
+                  border: `1px solid ${C.dangerBorder}`,
+                  background: C.dangerBg,
+                }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 500, textAlign: 'center', color: C.danger }}>
+                    {error}
+                  </p>
+                </div>
+              ) : (
+                <div style={{
+                  borderRadius: 10, padding: 12,
+                  border: `1px solid ${C.primary}`,
+                  background: 'rgba(124,58,237,0.12)',
+                }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: C.accent }}>
+                    {t('sessionActiveTitle')}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 13, color: C.textSecondary, lineHeight: 1.5 }}>
+                    {t('otpVerifyMessage')}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label style={labelStyle}>{t('otpCodeLabel')}</label>
+                <input
+                  type="text" inputMode="numeric" autoComplete="one-time-code"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onFocus={() => setFocusedField('otpCode')}
+                  onBlur={() => setFocusedField(null)}
+                  style={{ ...inputStyle('otpCode'), textAlign: 'center', fontSize: 22, letterSpacing: 8, fontWeight: 700 }}
+                  placeholder="000000"
+                  maxLength={6}
+                  autoFocus
+                  disabled={otpExpired}
+                />
+              </div>
+
+              <p style={{
+                margin: 0, fontSize: 12.5, textAlign: 'center',
+                color: otpExpired ? C.danger : C.textTertiary, fontWeight: otpExpired ? 700 : 500,
+              }}>
+                {otpExpired
+                  ? t('otpExpiredMessage')
+                  : t('otpTimerLabel').replace('{time}', `${String(Math.floor(otpSecondsLeft / 60)).padStart(1, '0')}:${String(otpSecondsLeft % 60).padStart(2, '0')}`)}
+              </p>
+
+              <button
+                type="submit" disabled={loading || otpCode.length !== 6 || otpExpired}
+                style={{
+                  width: '100%', padding: '12px 16px', borderRadius: 9, border: 'none',
+                  background: C.primary, color: '#fff',
+                  fontSize: 14, fontWeight: 700,
+                  cursor: (loading || otpExpired) ? 'not-allowed' : 'pointer',
+                  opacity: (loading || otpExpired || otpCode.length !== 6) ? 0.6 : 1, marginTop: 4,
+                  transition: 'background 0.15s',
+                }}
+              >{loading ? t('loading') : t('otpVerifyButton')}</button>
+
+              <button
+                type="button"
+                onClick={resetToLogin}
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '11px 16px', borderRadius: 9,
+                  border: `1px solid ${C.border}`, background: 'none',
+                  color: C.textSecondary, fontSize: 14, fontWeight: 600,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
+                }}
+              >{t('cancel')}</button>
+            </form>
+          ) : phoneVerifyStep ? (
             <form onSubmit={(e) => { e.preventDefault(); handlePhoneVerify() }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {error ? (
                 <div style={{
@@ -544,7 +692,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ marginTop: 28, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          {!phoneVerifyStep && (
+          {!phoneVerifyStep && !otpStep && (
             <>
               <p style={{ margin: 0, fontSize: 13, color: C.textTertiary }}>
                 {isLoginMode ? t('noAccountSwitch') : t('haveAccountSwitch')}
