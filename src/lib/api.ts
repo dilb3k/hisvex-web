@@ -124,21 +124,31 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-let retryCount = 0
 const MAX_RETRIES = 2
 
 api.interceptors.response.use(
-  (response) => {
-    retryCount = 0
-    return response
-  },
+  (response) => response,
   async (error) => {
-    if (error.code === 'ECONNABORTED' && retryCount < MAX_RETRIES) {
-      retryCount++
-      console.log(`API timeout, retrying (${retryCount}/${MAX_RETRIES})...`)
-      return api.request(error.config)
+    const cfg = error.config as (InternalAxiosRequestConfig & { _timeoutRetryCount?: number }) | undefined
+    // GET is safe to retry blind — it can't change anything server-side, so
+    // replaying it after a timeout risks nothing worse than reading the same
+    // data twice. A mutating method (sales, debtor adjust, payment approve,
+    // ...) is a different story: a timeout only means THIS client gave up
+    // waiting, not that the server didn't finish the write — the request
+    // could easily have already succeeded and be sitting in the database
+    // when this fires. Retrying it here would record that same sale/payment
+    // a second time with no way to tell it apart from a real second one.
+    // Fixing this properly needs an idempotency key the server dedupes on;
+    // until that exists, the safe default is to not retry writes at all and
+    // surface the timeout as an error instead.
+    if (error.code === 'ECONNABORTED' && cfg && cfg.method === 'get') {
+      const count = cfg._timeoutRetryCount ?? 0
+      if (count < MAX_RETRIES) {
+        cfg._timeoutRetryCount = count + 1
+        console.log(`API timeout, retrying (${count + 1}/${MAX_RETRIES})...`)
+        return api.request(cfg)
+      }
     }
-    retryCount = 0
     return Promise.reject(error)
   }
 )
