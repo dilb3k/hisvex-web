@@ -4,6 +4,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
 import type { AuthResponse, AuthSuccess, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
 import { getBusinessDate } from './businessDay'
+import { enqueueWrite, flushOfflineQueue } from './offlineQueue'
 
 interface InventoryResponse {
   items: InventoryItem[]
@@ -49,6 +50,10 @@ function scheduleHealthRecheck() {
         isPrimaryDown = false
         if (healthRecheckTimer) { clearInterval(healthRecheckTimer); healthRecheckTimer = null }
         console.log('[api] Primary (Railway) is back — switching off Render.')
+        reportOpsFailoverEvent('recovered', 'render', 'railway')
+        void flushOfflineQueue((item) =>
+          api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
+        )
       }
     } catch {
       // Still down — leave isPrimaryDown as-is, try again next tick.
@@ -78,6 +83,38 @@ function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) return true
   const url = config.url ?? ''
   return url.includes('/snapshots') || url.includes('/inventory/range') || url.includes('/stats')
+}
+
+// The only writes queued for offline replay when BOTH backends are down —
+// deliberately narrow: these three are the ones a cashier can't just wait
+// out (a sale in progress, closing out the day), and their payloads are
+// self-contained enough to safely replay later. Everything else (product
+// edits, debtor adjustments, admin actions) still surfaces as a normal error
+// rather than silently queuing — broadening this list is follow-up work, not
+// a default to reach for without checking each endpoint's own replay safety.
+const OFFLINE_QUEUABLE_PATHS = ['/inventory/sales', '/inventory/start-day', '/inventory/bulk-current']
+
+function isOfflineQueuable(config: InternalAxiosRequestConfig): boolean {
+  const url = config.url ?? ''
+  const method = (config.method ?? '').toLowerCase()
+  return (method === 'post' || method === 'put') && OFFLINE_QUEUABLE_PATHS.some((p) => url.includes(p))
+}
+
+// Best-effort, fire-and-forget report to whichever backend is CURRENTLY
+// reachable — never routed through the `api` instance above, since that
+// would re-enter the very failover logic this is reporting on. A failure
+// here (e.g. this call itself hits a third, even-worse failure) is silently
+// dropped; it must never affect the request that triggered the failover.
+function reportOpsFailoverEvent(event: 'failover' | 'recovered', from: string, to: string) {
+  if (!apiToken) return
+  const baseUrl = event === 'failover' ? BACKUP_API_URL : PRIMARY_API_URL
+  void rawAxios
+    .post(
+      `${baseUrl}/ops/failover`,
+      { event, from, to },
+      { timeout: 5000, headers: { Authorization: `Bearer ${apiToken}` } },
+    )
+    .catch(() => {})
 }
 
 let apiToken: string | null = null
@@ -165,6 +202,20 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (config.timeout === undefined) {
     config.timeout = isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
   }
+  // Stamped once per logical request, not once per attempt: a retry (the
+  // failover-retry below, or a replay from the offline queue) reuses the
+  // SAME config object, so this only runs the first time and the key
+  // travels unchanged through every subsequent attempt — which is the whole
+  // point, since the backend dedupes on it (see idempotency.service.ts).
+  if (
+    isOfflineQueuable(config) &&
+    config.data &&
+    typeof config.data === 'object' &&
+    !('idempotencyKey' in config.data)
+  ) {
+    ;(config.data as Record<string, unknown>).idempotencyKey =
+      typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
   if (config.method === 'get') {
     // Stamp the generation active at dispatch time so the response handler can tell
     // whether a mutation raced ahead of this GET before its response landed.
@@ -186,6 +237,23 @@ let refreshPromise: Promise<'ok' | 'failed'> | null = null
 // — only the phone-verification page's read-only "view products" link uses
 // it, and only until it naturally expires.
 const STORAGE_KEY_STALE_TOKEN = 'hisvex_stale_token'
+
+// Decodes a JWT's `exp` claim locally — no network call, so this still works
+// when both backends are unreachable. Used by authStore.hydrate() to decide
+// whether a cached session can be trusted while offline instead of treating
+// "the server didn't answer" the same as "the server said this token is
+// dead" (see handleSessionExpired's isSessionExpired tag above).
+export function decodeJwtExpMs(token: string): number | null {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const json = JSON.parse(atob(normalized))
+    return typeof json.exp === 'number' ? json.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
 
 export function getStaleToken(): string | null {
   try { return localStorage.getItem(STORAGE_KEY_STALE_TOKEN) } catch { return null }
@@ -221,15 +289,22 @@ function handleSessionExpired(
   try { localStorage.removeItem('hisvex_refresh') } catch {}
   try { localStorage.removeItem('hisvex_user') } catch {}
   unauthorizedHandler?.()
+
+  // Tagged so callers (authStore.hydrate) can tell "the server actually said
+  // this session is dead" apart from a network/backend-down failure that
+  // happened to reach this same code path some other way — only the former
+  // should ever wipe a still-otherwise-valid token.
+  const tag = (err: Error): Error => Object.assign(err, { isSessionExpired: true })
+
   if (data && typeof data === 'object') {
     if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
-      return new Error(data.error.message)
+      return tag(new Error(data.error.message))
     }
     if ('message' in data && typeof data.message === 'string') {
-      return new Error(data.message)
+      return tag(new Error(data.message))
     }
   }
-  return new Error('Avtorizatsiya tugagan. Qayta kiring.')
+  return tag(new Error('Avtorizatsiya tugagan. Qayta kiring.'))
 }
 
 api.interceptors.response.use(
@@ -273,9 +348,44 @@ api.interceptors.response.use(
         isPrimaryDown = true
         scheduleHealthRecheck()
         console.warn('[api] Primary (Railway) unreachable — failing over to Render for this and subsequent requests.')
+        reportOpsFailoverEvent('failover', 'railway', 'render')
       }
       originalRequest.baseURL = BACKUP_API_URL
       return api(originalRequest)
+    }
+
+    // Both backends just failed for this exact request (the branch above
+    // already tried the other one). For a sale/stock-write specifically,
+    // don't hand the cashier an error over something outside their control —
+    // queue it locally and answer as if it went through. Read requests, and
+    // every other write, still surface the real error: there's no safe
+    // "pretend it worked" answer for those (a cashier can retry a save, but
+    // can't act on stale/guessed data for a read).
+    if (
+      originalRequest?._failoverRetried &&
+      isFailoverTriggering(error) &&
+      isOfflineQueuable(originalRequest)
+    ) {
+      // config.data is still the original plain object at this point — axios
+      // only serializes it to a string internally when actually dispatching,
+      // it doesn't mutate config.data itself.
+      const data = (originalRequest.data as Record<string, unknown>) ?? {}
+      const id = (data.idempotencyKey as string | undefined) ?? crypto.randomUUID()
+      try {
+        await enqueueWrite({
+          id,
+          method: (originalRequest.method as 'post' | 'put') ?? 'post',
+          url: originalRequest.url ?? '',
+          data,
+        })
+        console.warn(`[api] Both backends unreachable — queued ${originalRequest.url} for offline replay (${id}).`)
+        return { data, status: 200, statusText: 'OK (queued offline)', headers: {}, config: originalRequest }
+      } catch (queueError) {
+        console.error('[api] Failed to queue write for offline replay — surfacing the original error', queueError)
+        // Fall through to the normal error path below; the operation is
+        // genuinely lost otherwise, and the caller needs to know that
+        // rather than believe it was queued.
+      }
     }
 
     if (error.response?.status === 401 && !isAuthEndpoint && apiRefreshToken && originalRequest && !originalRequest._retry) {
@@ -481,6 +591,16 @@ export function resolveImageUrl(imageUrl?: string | null, image?: string, imageH
     return `${activeApiBaseUrl()}/products/image/${src}`
   }
   return undefined
+}
+
+// Call once on app startup (see AppLayout) to replay anything left queued
+// from a previous tab/session that closed while both backends were down —
+// the health-recheck-triggered flush in scheduleHealthRecheck above only
+// covers a recovery that happens while this tab is already open.
+export function flushOfflineQueueOnStartup() {
+  void flushOfflineQueue((item) =>
+    api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
+  )
 }
 
 export default api

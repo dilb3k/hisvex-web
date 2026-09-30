@@ -1,11 +1,26 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { useAppStore } from '@/lib/appStore'
-import { X, AlertTriangle, CheckCircle, Info } from 'lucide-react'
+import { useAuthStore } from '@/lib/authStore'
+import { subscribeOfflineQueueCount } from '@/lib/offlineQueue'
+import { flushOfflineQueueOnStartup } from '@/lib/api'
+import { X, AlertTriangle, CheckCircle, Info, WifiOff } from 'lucide-react'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { error, clearError, toast, hideToast } = useAppStore()
+  const isOffline = useAuthStore((s) => s.isOffline)
+  const [queuedCount, setQueuedCount] = useState(0)
+
+  useEffect(() => {
+    // Replays anything left queued from a previous session (tab closed while
+    // both backends were unreachable) as soon as this one starts.
+    flushOfflineQueueOnStartup()
+    return subscribeOfflineQueueCount(setQueuedCount)
+  }, [])
+
+  const showOfflineBanner = isOffline || queuedCount > 0
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -18,6 +33,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           overflow: 'hidden',
           background: 'var(--color-bg)',
         }}>
+          {showOfflineBanner && (
+            <div
+              role="status"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 20px',
+                background: 'var(--color-warning-soft)',
+                borderBottom: '1px solid rgba(245,158,11,0.3)',
+                color: 'var(--color-warning)',
+                fontSize: 13, fontWeight: 500,
+              }}
+            >
+              <WifiOff size={16} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>
+                Tarmoq/Baza bilan vaqtincha uzilish: Ma&apos;lumotlar lokal xotiraga xavfsiz saqlandi, aloqa tiklanishi bilan sinxronlanadi.
+                {queuedCount > 0 ? ` (${queuedCount} ta yozuv navbatda)` : ''}
+              </span>
+            </div>
+          )}
           {error && (
             <div
               role="alert"

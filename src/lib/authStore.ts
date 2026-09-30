@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { setApiToken, setRefreshToken, clearApiCache, authApi } from './api'
+import { setApiToken, setRefreshToken, clearApiCache, authApi, decodeJwtExpMs } from './api'
 import { syncBusinessDayFromServer } from './businessDay'
 import type { User } from './types'
 
@@ -63,6 +63,11 @@ interface AuthState {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
+  // True when the session was accepted on the strength of a locally-decoded,
+  // not-yet-expired JWT because neither backend answered — not a real "the
+  // server confirmed this session" state. Cleared the next time /auth/me
+  // actually succeeds.
+  isOffline: boolean
   setAuth: (token: string, refreshToken: string, user: User) => void
   setUser: (user: User) => void
   logout: () => void
@@ -76,6 +81,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  isOffline: false,
   setAuth: (token, refreshToken, user) => {
     const normalized = { ...user }
     if (!normalized._id && (normalized as any).id) {
@@ -87,7 +93,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     persistRefreshToken(refreshToken)
     persistUser(normalized)
     applyBusinessDay(normalized)
-    set({ token, refreshToken, user: normalized, isAuthenticated: true })
+    set({ token, refreshToken, user: normalized, isAuthenticated: true, isOffline: false })
   },
   setUser: (user) => {
     persistUser(user)
@@ -104,7 +110,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     setRefreshToken('')
     clearApiCache()
     clearPersistedToken()
-    set({ token: '', refreshToken: '', user: null, isAuthenticated: false })
+    set({ token: '', refreshToken: '', user: null, isAuthenticated: false, isOffline: false })
   },
   setLoading: (isLoading) => set({ isLoading }),
   hydrate: async () => {
@@ -116,7 +122,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       setRefreshToken('')
       clearApiCache()
       clearPersistedToken()
-      set({ token: '', refreshToken: '', user: null, isAuthenticated: false, isLoading: false })
+      set({ token: '', refreshToken: '', user: null, isAuthenticated: false, isLoading: false, isOffline: false })
     }
 
     const result = readPersistedToken()
@@ -134,10 +140,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // bounced to /login once some later request happened to 401. The whole
     // point of holding the splash is to make that impossible: one request,
     // and the very next screen is either the dashboard or the login page.
-    //
-    // A network failure is treated as "no session" too. This client has no
-    // offline mode (unlike desktop/mobile, which queue writes locally), so a
-    // dashboard it cannot talk to is a worse answer than a login screen.
     try {
       const { data } = await authApi.getMe()
       if (!data) { fail(); return }
@@ -154,8 +156,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user: normalized,
         isAuthenticated: true,
         isLoading: false,
+        isOffline: false,
       })
-    } catch {
+    } catch (err) {
+      // The server explicitly said this session is dead (a real 401) — that,
+      // and only that, is grounds to wipe it.
+      if ((err as { isSessionExpired?: boolean })?.isSessionExpired) {
+        fail()
+        return
+      }
+
+      // Neither backend answered at all (both Railway and Render unreachable
+      // — see api.ts's failover logic, which already tried both before this
+      // rejection reached here). Falling back to "no session" here would log
+      // a cashier out of a perfectly valid session just because the network
+      // is having a bad moment — worse than working offline off the cached
+      // user, which is exactly what desktop/mobile already do. Trust the
+      // locally-cached session only while the JWT itself hasn't expired;
+      // the very next successful /auth/me call (health-recheck-triggered
+      // reconnect) clears isOffline and re-confirms everything for real.
+      const expMs = decodeJwtExpMs(result.token)
+      const stillValid = expMs !== null && expMs > Date.now()
+      if (stillValid && result.user) {
+        set({
+          token: result.token,
+          refreshToken: result.refreshToken,
+          user: result.user,
+          isAuthenticated: true,
+          isLoading: false,
+          isOffline: true,
+        })
+        return
+      }
+
       fail()
     }
   },
