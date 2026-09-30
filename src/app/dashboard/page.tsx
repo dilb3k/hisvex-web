@@ -907,8 +907,13 @@ export default function StatisticsPage() {
                 <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '3px 0 0' }}>{t('statsFullBreakdownSubtitle')}</p>
               </div>
               <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20,
-                padding: 14, borderRadius: 14, border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                // Fixed 2 columns, not auto-fit/minmax — auto-fit let this
+                // grow to 4+ columns on a wide window, scattering each pair
+                // (sotiladigan/sotilgan dona, sotish/sotilgan qiymat, ...)
+                // across the same row instead of stacking them as a clear
+                // pair on their own row.
+                display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', columnGap: 24, rowGap: 18, marginBottom: 20,
+                padding: 16, borderRadius: 14, border: '1px solid var(--color-border)', background: 'var(--color-surface)',
               }}>
                 {[
                   { label: t('totalSellablePieces'), value: String(overallTotals.sellableItems) },
@@ -921,9 +926,9 @@ export default function StatisticsPage() {
                   { label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
                 ].map((item, i) => (
                   <div key={i}>
-                    <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>{item.label}</p>
+                    <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>{item.label}</p>
                     <p style={{
-                      fontSize: 'clamp(13px, 3.5vw, 15px)', fontWeight: 700, margin: 0,
+                      fontSize: 'clamp(16px, 4vw, 22px)', fontWeight: 700, margin: 0,
                       color: item.color ?? 'var(--color-text)', fontVariantNumeric: 'tabular-nums',
                     }}>{item.value}</p>
                   </div>
