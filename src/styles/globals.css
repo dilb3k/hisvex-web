@@ -8,7 +8,10 @@
   --color-border-light: #333340;
   --color-text: #e8e8ed;
   --color-text-secondary: #8888a0;
-  --color-text-tertiary: #5c5c70;
+  /* #5c5c70 measured ~2.96:1 against --color-bg (#0e0e12) — below WCAG's 3:1
+     floor even for large/UI text. Lightened just enough to clear ~3.7:1
+     while staying visibly de-emphasized relative to --color-text-secondary. */
+  --color-text-tertiary: #6b6b82;
   --color-primary: #7c3aed;
   --color-primary-hover: #6d28d9;
   --color-primary-soft: rgba(124, 58, 237, 0.12);
@@ -162,8 +165,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   }
 
   .mobile-header-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: none;
     background: var(--color-surface-hover);
@@ -239,6 +242,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .page-actions {
     flex-wrap: wrap;
     flex-shrink: 1;
+  }
+
+  /* Touch targets: 44px is the iOS HIG / WCAG 2.5.5 minimum. Desktop's
+     more compact .btn (8px 14px padding, ~28px tall) stays as-is above
+     this breakpoint — only the touch-driven mobile layout needs this. */
+  .btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .btn-icon {
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -567,11 +584,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.15s;
+  transition: transform 0.1s, background 0.15s, filter 0.15s;
   font-family: inherit;
   text-decoration: none;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* Touch feedback — was hover-only, so a tap on a touch screen (no hover
+   state) gave no visual acknowledgment at all that the press registered. */
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn:disabled {
