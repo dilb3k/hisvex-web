@@ -11,66 +11,36 @@ interface InventoryResponse {
   summary?: { totalStart: number; totalCurrent: number; totalSold: number; totalRevenue: number; totalProfit: number }
 }
 
-// Primary (Railway) / Backup (Render) — same codebase deployed twice against
-// the same MongoDB Atlas cluster. Calls used to go through Vercel's
-// `/api/:path*` rewrite to a single hardcoded backend (see vercel.json); that
-// indirection can't switch targets at request time, so failover requires
-// calling both backends' absolute URLs directly from the browser instead
-// (both already allow this origin via CORS — verified before this change).
-const PRIMARY_API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hisvex-api-production.up.railway.app/api'
-const BACKUP_API_URL = process.env.NEXT_PUBLIC_API_BACKUP_URL || 'https://hisvex-api.onrender.com/api'
-const HEALTH_RECHECK_INTERVAL_MS = 3 * 60 * 1000
-const DEFAULT_TIMEOUT_MS = 10000
-const HEAVY_TIMEOUT_MS = 60000
+// Real backend hosts (Railway primary, Render backup) are no longer known
+// to the browser at all — this client always talks to this same origin's
+// own /api/* route, which is a server-side proxy (src/app/api/[...path]/
+// route.ts) that holds the actual URLs (BACKEND_PRIMARY_URL/
+// BACKEND_BACKUP_URL, server-only env vars) and does the primary→backup
+// failover itself, in one round trip the browser never sees. That proxy
+// answers with a 503 + error.code "BOTH_BACKENDS_DOWN" only when it already
+// tried both and neither answered — see isBothBackendsDown below.
+//
+// Timeouts here are set well above what the proxy needs for its OWN
+// two-attempt worst case (10s+10s / 60s+60s server-side) so a genuine dual
+// outage surfaces as that clean 503 instead of this client aborting first
+// and masking it with a generic timeout error.
+const DEFAULT_TIMEOUT_MS = 22000
+const HEAVY_TIMEOUT_MS = 125000
 
-// Kept relative in dev: the local dev server proxies `/api` to whatever a
-// developer is running locally (see next.config's dev-only rewrite), and
-// there's no second local backend to fail over to.
-const API_BASE_URL = process.env.NODE_ENV === 'development' ? (process.env.NEXT_PUBLIC_API_BASE_URL || '/api') : PRIMARY_API_URL
+const API_BASE_URL = '/api'
 
-let isPrimaryDown = false
-let healthRecheckTimer: ReturnType<typeof setInterval> | null = null
-
-function activeApiBaseUrl(): string {
-  if (process.env.NODE_ENV === 'development') return API_BASE_URL
-  return isPrimaryDown ? BACKUP_API_URL : PRIMARY_API_URL
-}
-
-// Once a request has actually failed over, ping Railway's own health check
-// (not through this same failover-aware client — a plain call, so a still-down
-// primary can't itself trigger another failover attempt) every 3 minutes.
-// Stops itself once primary answers again; a later failure restarts it.
-function scheduleHealthRecheck() {
-  if (healthRecheckTimer) return
-  healthRecheckTimer = setInterval(async () => {
-    if (!isPrimaryDown) return
-    try {
-      const res = await rawAxios.get(`${PRIMARY_API_URL}/health`, { timeout: 5000 })
-      if (res.status === 200) {
-        isPrimaryDown = false
-        if (healthRecheckTimer) { clearInterval(healthRecheckTimer); healthRecheckTimer = null }
-        console.log('[api] Primary (Railway) is back — switching off Render.')
-        reportOpsFailoverEvent('recovered', 'render', 'railway')
-        void flushOfflineQueue((item) =>
-          api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
-        )
-      }
-    } catch {
-      // Still down — leave isPrimaryDown as-is, try again next tick.
-    }
-  }, HEALTH_RECHECK_INTERVAL_MS)
-}
-
-// Only a server that's actually unreachable/down should fail over — a 4xx is
-// the client's own fault (bad input, expired auth, not found) and retrying it
-// against a second server would just get the same answer twice.
-function isFailoverTriggering(error: AxiosError): boolean {
-  const status = error.response?.status
-  if (status === 502 || status === 503 || status === 504) return true
-  // No response at all reached us (not even an error response) — a genuine
-  // connection-level failure, not our own client-side timeout (ECONNABORTED
-  // is handled separately below and deliberately excluded here: a slow-but-
-  // alive server isn't "down" the way a dead one returning 502/no-response is).
+// A 503 from OUR OWN proxy carrying this error code is the proxy telling us
+// it already tried both backends and neither answered — the same situation
+// isFailoverTriggering used to detect from a raw backend response. A plain
+// network-level failure reaching this client at all (can't even reach our
+// own same-origin proxy) means the device itself has no connectivity, which
+// is the same "nothing is reachable" situation from the caller's point of
+// view.
+function isBothBackendsDown(error: AxiosError): boolean {
+  if (error.response?.status === 503) {
+    const data = error.response.data as { error?: { code?: string } } | undefined
+    if (data?.error?.code === 'BOTH_BACKENDS_DOWN') return true
+  }
   if (!error.response && error.code && error.code !== 'ECONNABORTED') return true
   return false
 }
@@ -98,23 +68,6 @@ function isOfflineQueuable(config: InternalAxiosRequestConfig): boolean {
   const url = config.url ?? ''
   const method = (config.method ?? '').toLowerCase()
   return (method === 'post' || method === 'put') && OFFLINE_QUEUABLE_PATHS.some((p) => url.includes(p))
-}
-
-// Best-effort, fire-and-forget report to whichever backend is CURRENTLY
-// reachable — never routed through the `api` instance above, since that
-// would re-enter the very failover logic this is reporting on. A failure
-// here (e.g. this call itself hits a third, even-worse failure) is silently
-// dropped; it must never affect the request that triggered the failover.
-function reportOpsFailoverEvent(event: 'failover' | 'recovered', from: string, to: string) {
-  if (!apiToken) return
-  const baseUrl = event === 'failover' ? BACKUP_API_URL : PRIMARY_API_URL
-  void rawAxios
-    .post(
-      `${baseUrl}/ops/failover`,
-      { event, from, to },
-      { timeout: 5000, headers: { Authorization: `Bearer ${apiToken}` } },
-    )
-    .catch(() => {})
 }
 
 let apiToken: string | null = null
@@ -194,11 +147,6 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (apiToken) {
     config.headers.Authorization = `Bearer ${apiToken}`
   }
-  // Re-evaluated on every dispatch (not baked into the axios instance) so a
-  // failover that happened mid-session immediately applies to the very next
-  // call, including one already in flight being retried by the response
-  // interceptor below.
-  config.baseURL = activeApiBaseUrl()
   if (config.timeout === undefined) {
     config.timeout = isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
   }
@@ -326,44 +274,34 @@ api.interceptors.response.use(
       // caller, so an immediately-following GET can never observe stale cached data.
       cache.clear()
       cacheGeneration++
+      // A successful write is a strong "we can reach a real backend right
+      // now" signal — opportunistically drain anything still queued from an
+      // earlier both-down stretch instead of waiting for this tab to
+      // reload. flushOfflineQueue no-ops cheaply when the queue is empty or
+      // already flushing, so this is safe to fire on every mutation.
+      void flushOfflineQueue((item) =>
+        api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
+      )
     }
     return response
   },
   async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _failoverRetried?: boolean }
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     const url = originalRequest?.url ?? ''
     const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
-    // Primary looks down (502/503/504, or unreachable outright) — resend this
-    // exact request (headers, auth, body — including a FormData upload, which
-    // browsers/RN keep re-readable, unlike a Node stream) against the backup
-    // immediately, before this error reaches the caller as a failure. Applies
-    // to auth calls too: a login shouldn't be stuck just because Railway is
-    // the one that's down. Only ever retried once per request either way, so
-    // a backup that's *also* down surfaces as a normal error instead of
-    // looping.
-    if (originalRequest && !originalRequest._failoverRetried && isFailoverTriggering(error)) {
-      originalRequest._failoverRetried = true
-      if (!isPrimaryDown) {
-        isPrimaryDown = true
-        scheduleHealthRecheck()
-        console.warn('[api] Primary (Railway) unreachable — failing over to Render for this and subsequent requests.')
-        reportOpsFailoverEvent('failover', 'railway', 'render')
-      }
-      originalRequest.baseURL = BACKUP_API_URL
-      return api(originalRequest)
-    }
-
-    // Both backends just failed for this exact request (the branch above
-    // already tried the other one). For a sale/stock-write specifically,
-    // don't hand the cashier an error over something outside their control —
-    // queue it locally and answer as if it went through. Read requests, and
-    // every other write, still surface the real error: there's no safe
-    // "pretend it worked" answer for those (a cashier can retry a save, but
-    // can't act on stale/guessed data for a read).
+    // The proxy (src/app/api/[...path]/route.ts) already tried primary then
+    // backup server-side before this response ever reached the browser — no
+    // client-side retry-against-a-different-baseURL left to do here. For a
+    // sale/stock-write specifically, don't hand the cashier an error over
+    // something outside their control — queue it locally and answer as if
+    // it went through. Read requests, and every other write, still surface
+    // the real error: there's no safe "pretend it worked" answer for those
+    // (a cashier can retry a save, but can't act on stale/guessed data for
+    // a read).
     if (
-      originalRequest?._failoverRetried &&
-      isFailoverTriggering(error) &&
+      originalRequest &&
+      isBothBackendsDown(error) &&
       isOfflineQueuable(originalRequest)
     ) {
       // config.data is still the original plain object at this point — axios
@@ -392,7 +330,7 @@ api.interceptors.response.use(
       originalRequest._retry = true
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
-          const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: apiRefreshToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          const res = await rawAxios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken: apiRefreshToken }, { timeout: DEFAULT_TIMEOUT_MS })
           const body = res.data
           const data = body && typeof body === 'object' && 'success' in body && 'data' in body ? body.data : body
           const newToken: string = data.token
@@ -446,6 +384,10 @@ api.interceptors.response.use(
 export const authApi = {
   login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
   loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
+  // Completes the AuthOtpChallenge path login() can now return — see
+  // types.ts. Same success shape as a normal login (token/refreshToken/user).
+  verifySessionChallenge: (sessionChallengeId: string, otpCode: string) =>
+    api.post<AuthSuccess>('/auth/verify-session-challenge', { sessionChallengeId, otpCode, deviceId: getDeviceId() }),
   register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number) => api.post<AuthSuccess>('/auth/register', {
     username,
     password,
@@ -586,17 +528,18 @@ export function resolveImageUrl(imageUrl?: string | null, image?: string, imageH
     return src
   }
   if (IMAGE_HASH_REGEX.test(src)) {
-    // Legacy pre-R2 images live in Mongo, not R2 — reachable from whichever
-    // backend is currently active since both read the same Atlas cluster.
-    return `${activeApiBaseUrl()}/products/image/${src}`
+    // Legacy pre-R2 images live in Mongo, not R2 — routed through the same
+    // same-origin proxy as every other call, which picks whichever backend
+    // is currently reachable (both read the same Atlas cluster).
+    return `${API_BASE_URL}/products/image/${src}`
   }
   return undefined
 }
 
 // Call once on app startup (see AppLayout) to replay anything left queued
 // from a previous tab/session that closed while both backends were down —
-// the health-recheck-triggered flush in scheduleHealthRecheck above only
-// covers a recovery that happens while this tab is already open.
+// the opportunistic flush in the response interceptor's success handler
+// above only covers a recovery that happens while this tab is already open.
 export function flushOfflineQueueOnStartup() {
   void flushOfflineQueue((item) =>
     api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
