@@ -29,6 +29,23 @@ function isFailoverTriggeringStatus(status: number): boolean {
   return status === 502 || status === 503 || status === 504
 }
 
+// Railway's own edge router returns a plain 404 when the service itself is
+// torn down / asleep / not deployed — by status code alone this is
+// indistinguishable from a completely normal business 404 ("Mahsulot
+// topilmadi"). Only fail over when the platform's own signature is
+// actually present on the response; an ordinary app-level 404 must reach
+// the client unchanged and must never be retried against backup.
+const RAILWAY_NOT_FOUND_BODY_MARKER = 'Application not found'
+async function readAndCheckPlatformNotFound(res: Response): Promise<{ matched: boolean; body: ArrayBuffer }> {
+  const body = await res.arrayBuffer()
+  if (res.headers.has('x-railway-router')) return { matched: true, body }
+  // A real marker always appears well within the first few hundred bytes of
+  // Railway's static error page — capped so a large JSON 404 body from the
+  // app itself is never fully decoded just to rule this out.
+  const text = new TextDecoder().decode(body.slice(0, 4096))
+  return { matched: text.includes(RAILWAY_NOT_FOUND_BODY_MARKER), body }
+}
+
 function isHeavy(path: string, contentType: string | null): boolean {
   if (contentType?.includes('multipart/form-data')) return true
   return path.includes('/snapshots') || path.includes('/inventory/range') || path.includes('/stats')
@@ -115,14 +132,28 @@ async function fetchWithFailover(
 
   if (!skipPrimary) {
     const res = await attemptOnce(`${PRIMARY_URL}${path}`, method, headers, body, timeoutMs)
-    if (res && !isFailoverTriggeringStatus(res.status)) {
+
+    if (res && res.status === 404 && replaySafe) {
+      const { matched, body: bodyBuf } = await readAndCheckPlatformNotFound(res)
+      if (!matched) {
+        // A real, normal 404 from the app itself — return it exactly as
+        // received. body() was already consumed above to inspect it, so the
+        // response is reconstructed from the buffered bytes instead of
+        // re-reading the original (which would throw).
+        primaryDownUntil = 0
+        return { res: new Response(bodyBuf, { status: res.status, statusText: res.statusText, headers: res.headers }), usedBackup: false }
+      }
+      primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
+      reportFailoverEvent(headers.get('authorization'))
+    } else if (res && !isFailoverTriggeringStatus(res.status)) {
       primaryDownUntil = 0
       return { res, usedBackup: false }
+    } else {
+      if (!replaySafe) return { res, usedBackup: false }
+      if (res?.body) await res.body.cancel().catch(() => {})
+      primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
+      reportFailoverEvent(headers.get('authorization'))
     }
-    if (!replaySafe) return { res, usedBackup: false }
-    if (res?.body) await res.body.cancel().catch(() => {})
-    primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
-    reportFailoverEvent(headers.get('authorization'))
   }
 
   const res = await attemptOnce(`${BACKUP_URL}${path}`, method, headers, body, timeoutMs)

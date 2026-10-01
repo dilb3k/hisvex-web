@@ -58,7 +58,7 @@ const proxySource=transpile('src/app/api/[...path]/route.ts')
 function proxy(responses) {
   const calls=[];const context={exports:{},require:name=>{if(name==='next/server') return require('next/server');throw Error(name)},
     process:{env:{BACKEND_PRIMARY_URL:'https://primary.test/api',BACKEND_BACKUP_URL:'https://backup.test/api'}},
-    Headers,Response,AbortSignal,fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
+    Headers,Response,AbortSignal,TextDecoder,fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
   }
   vm.runInNewContext(proxySource,context)
   return {handlers:context.exports,calls}
@@ -75,6 +75,23 @@ test('proxy passes application conflicts without retry and supports all null-bod
   const conflict=proxy([new Response('conflict',{status:409})]);assert.equal((await request(conflict,'POST')).status,409);assert.equal(conflict.calls.length,1)
   for(const status of [204,205,304]) {const p=proxy([new Response(null,{status})]);const result=await request(p,'GET');assert.equal(result.status,status);assert.equal(await result.text(),'')}
   const head=proxy([new Response('ignored')]);assert.equal(await (await request(head,'HEAD')).text(),'')
+})
+test('an ordinary business 404 is returned as-is and never retried on backup',async()=>{
+  const p=proxy([new Response(JSON.stringify({success:false,error:{message:'Mahsulot topilmadi'}}),{status:404})])
+  const result=await request(p,'GET');assert.equal(result.status,404);assert.equal(p.calls.length,1)
+  assert.equal((await result.json()).error.message,'Mahsulot topilmadi')
+})
+test('a Railway platform 404 (router header) fails over to backup exactly once',async()=>{
+  const p=proxy([new Response('not found',{status:404,headers:{'x-railway-router':'edge'}}),new Response('ok')])
+  const result=await request(p,'GET');assert.equal(result.status,200);assert.equal(p.calls.length,2)
+})
+test('a Railway platform 404 (Application not found body) fails over to backup exactly once',async()=>{
+  const p=proxy([new Response('Application not found',{status:404}),new Response('ok')])
+  const result=await request(p,'GET');assert.equal(result.status,200);assert.equal(p.calls.length,2)
+})
+test('a 404 on a write request is never inspected for platform-failover and never replayed',async()=>{
+  const p=proxy([new Response('Application not found',{status:404})])
+  const result=await request(p,'POST');assert.equal(result.status,404);assert.equal(p.calls.length,1)
 })
 
 
