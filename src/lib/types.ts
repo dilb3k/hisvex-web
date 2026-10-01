@@ -56,6 +56,10 @@ export type AuthResponse = AuthSuccess | AuthPhoneVerification | AuthOtpChalleng
 export type ProductUnit = 'dona' | 'kg'
 
 export interface Product {
+  stockEpoch?: number;
+  localId?: string
+  serverVersion?: number
+  baseVersion?: number
   _id: string
   name: string
   quantity?: number
@@ -77,6 +81,7 @@ export interface Product {
 }
 
 export interface InventoryItem {
+  serverVersion?: number
   _id: string
   productId: string
   product?: Product

@@ -110,6 +110,7 @@ async function fetchWithFailover(
   body: ArrayBuffer | undefined,
   timeoutMs: number,
 ): Promise<{ res: Response | null; usedBackup: boolean }> {
+  const replaySafe = ['GET', 'HEAD', 'OPTIONS'].includes(method)
   const skipPrimary = Date.now() < primaryDownUntil
 
   if (!skipPrimary) {
@@ -118,6 +119,8 @@ async function fetchWithFailover(
       primaryDownUntil = 0
       return { res, usedBackup: false }
     }
+    if (!replaySafe) return { res, usedBackup: false }
+    if (res?.body) await res.body.cancel().catch(() => {})
     primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
     reportFailoverEvent(headers.get('authorization'))
   }
@@ -147,7 +150,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
 
   if (!res) {
     return NextResponse.json(
-      { success: false, error: { code: 'BOTH_BACKENDS_DOWN', message: 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.' } },
+      { success: false, error: { code: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? 'BOTH_BACKENDS_DOWN' : 'WRITE_OUTCOME_UNKNOWN', message: 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.' } },
       { status: 503 },
     )
   }
@@ -156,16 +159,17 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
     // straight to it) is ALSO failing this exact request — both backends
     // are down, not just one.
     return NextResponse.json(
-      { success: false, error: { code: 'BOTH_BACKENDS_DOWN', message: 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.' } },
+      { success: false, error: { code: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? 'BOTH_BACKENDS_DOWN' : 'WRITE_OUTCOME_UNKNOWN', message: 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.' } },
       { status: 503 },
     )
   }
 
-  const responseBody = await res.arrayBuffer()
+  const responseBody = method === 'HEAD' || [204,205,304].includes(res.status) ? null : await res.arrayBuffer()
   const responseHeaders = forwardResponseHeaders(res)
   return new NextResponse(responseBody, { status: res.status, headers: responseHeaders })
 }
 
+export const HEAD = handle
 export const GET = handle
 export const POST = handle
 export const PUT = handle
@@ -177,3 +181,5 @@ export const OPTIONS = handle
 // cache or statically evaluate it. Also opts this route out of `output:
 // 'export'`-style static analysis expectations.
 export const dynamic = 'force-dynamic'
+
+export const runtime = 'nodejs'
