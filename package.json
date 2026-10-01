@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint src",
+    "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",
@@ -15,7 +17,7 @@
     "dayjs": "^1.11.13",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.487.0",
-    "next": "^15.3.1",
+    "next": "15.5.24",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.4"
@@ -24,6 +26,17 @@
     "@types/node": "^22.14.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
-    "typescript": "^5.8.3"
+    "fake-indexeddb": "^6.2.5",
+    "typescript": "^5.8.3",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.24"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "nanoid": "^3.3.18",
+    "sharp": "^0.35.4",
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }
