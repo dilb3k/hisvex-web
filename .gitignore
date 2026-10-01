@@ -10,3 +10,9 @@ out
 .vercel
 .env*
 !.env.example
+
+admin-backup*.json
+*.dump
+*.backup
+
+.claude/settings.local.json
