@@ -410,18 +410,13 @@ export default function SalesPage() {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
     try {
-      const lines = totals.lines.map(({ productId, quantity, lineTotal, listPrice }) => ({
-        productId,
-        quantity,
-        // Only sent when the line was actually renegotiated — an untouched
-        // line stays on the server's cheap list-price path instead of being
-        // routed through the locked-revenue accumulators for no reason.
-        ...(Math.abs(lineTotal - roundMoney(quantity * listPrice)) > 0.005
-          ? { lineRevenue: lineTotal }
-          : {}),
-      }))
+      const lines = totals.lines.map(({ productId, quantity, lineTotal }) => {
+        const entry=inventoryItems.find(item=>item.productId===productId)
+        const product=products.find(p=>p.localId===productId||p._id===productId) ?? entry?.product
+        return {productId,quantity,lineRevenue:lineTotal,expectedBuyPrice:entry?.buyPrice??product?.buyPrice??0,expectedUnit:normalizeUnit(entry?.unit??product?.unit),expectedStockEpoch:product?.stockEpoch??0}
+      })
       const today = getBusinessDate()
-      await inventoryApi.recordSales(today, lines)
+      const response = await inventoryApi.recordSales(today, lines)
       // Drop the sold units from what is on screen before anything is
       // re-fetched, so the remaining stock is correct in the same frame the
       // cart clears — the network round-trip below only confirms it.
@@ -437,9 +432,8 @@ export default function SalesPage() {
       // Statistics show the new quantities without their own manual reload.
       // Sequential, not parallel: refreshAll clears the API cache on entry, so
       // a concurrent read here would just be a second identical request.
-      await refreshAll()
-      await loadInventory()
-      setSuccess(t('salesSuccess'))
+      if (response.status !== 202) { await refreshAll(); await loadInventory() }
+      setSuccess(response.status === 202 ? (response.data?.needsReview ? `Savdo saqlandi, lekin server rad etdi: ${response.data.message}. Navbatni tekshiring; qayta savdo kiritmang.` : "Savdo qurilmada saqlandi; server tasdig‘i kutilmoqda") : t('salesSuccess'))
       setError(null)
       setTimeout(() => setSuccess(null), 3000)
     } catch (err) {

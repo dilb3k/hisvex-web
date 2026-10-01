@@ -257,11 +257,13 @@ export default function InventoryPage() {
       const newQty = clampCurrentQuantity(parseQuantityInput(currentQtyInput, selectedEntry.unit), selectedEntry.opening)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
       const statedRevenue = preview?.isOverridden ? preview.newRevenue : undefined
-      await inventoryApi.bulkUpdate([{
+      const response = await inventoryApi.bulkUpdate([{
         productId,
         currentQuantity: newQty,
+        baseVersion: selectedEntry.inv?.serverVersion ?? 0,
         ...(statedRevenue !== undefined ? { lineRevenue: statedRevenue } : {}),
       }])
+      if (response.status === 202) showToast("Amal saqlandi; server tasdig‘i kutilmoqda", 'info')
       clearApiCache()
       setItems((prev) => prev.map((item) => {
         if (item.productId !== productId && item.product?._id !== productId) return item

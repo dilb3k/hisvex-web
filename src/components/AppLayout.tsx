@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Sidebar } from './Sidebar'
+import { PendingOperations } from './PendingOperations'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { subscribeOfflineQueueCount } from '@/lib/offlineQueue'
@@ -47,11 +48,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             >
               <WifiOff size={16} style={{ flexShrink: 0 }} />
               <span style={{ flex: 1 }}>
-                Tarmoq/Baza bilan vaqtincha uzilish: Ma&apos;lumotlar lokal xotiraga xavfsiz saqlandi, aloqa tiklanishi bilan sinxronlanadi.
+                Server tasdig‘ini kutayotgan yozuvlar bo‘lishi mumkin. Hisobotda faqat tasdiqlangan ma’lumotlar aks etadi.
                 {queuedCount > 0 ? ` (${queuedCount} ta yozuv navbatda)` : ''}
               </span>
             </div>
           )}
+          {queuedCount > 0 && <PendingOperations count={queuedCount} />}
           {error && (
             <div
               role="alert"

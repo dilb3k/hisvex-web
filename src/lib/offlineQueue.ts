@@ -1,215 +1,166 @@
 'use client'
 
-// Offline write-queue for when BOTH backends (Railway and Render) are
-// unreachable — see api.ts's response interceptor, which enqueues here only
-// after its own primary->backup failover has already been tried and also
-// failed. Distinct from that failover: this is "nowhere to send it right
-// now", not "one of the two is down".
-//
-// Persisted in IndexedDB (survives a refresh/tab close, unlike an in-memory
-// queue) rather than localStorage — better suited to structured records and
-// not subject to localStorage's ~5MB/string-only limits if a backlog grows.
-
 const DB_NAME = 'hisvex-offline'
-const DB_VERSION = 1
-const STORE_NAME = 'writeQueue'
-const KEY_STORAGE_KEY = 'hisvex_offline_queue_key'
-
+const STORE = 'ownerWriteQueue'
+const KEYS = 'ownerKeys'
 export type QueuedWrite = {
-  id: string // the idempotencyKey — same value used on every send attempt
-  method: 'post' | 'put'
-  url: string
-  data: unknown
-  createdAt: number
+  id: string; owner: string; method: 'post' | 'put'; url: string; data: unknown; createdAt: number; sequence?: number; lastError?: string
 }
-
-type StoredRecord = {
-  id: string
-  method: 'post' | 'put'
-  url: string
-  createdAt: number
-  iv: string // base64
-  ciphertext: string // base64
-}
-
-// --- "Encryption" ---
-//
-// Honest caveat, not a security claim: this is AES-GCM with a key generated
-// once and stored in this same origin's localStorage. Anything running as
-// this page's own JavaScript (which is exactly what could read IndexedDB
-// directly anyway) can read that key too — this does NOT protect against an
-// attacker who can execute script in this page or has devtools open with the
-// page unlocked. What it DOES protect against: a queued sale/receipt sitting
-// as plain, directly-readable JSON if someone opens the browser's IndexedDB
-// storage file/inspector without also having the localStorage key material,
-// e.g. a shared-computer scenario where someone browses the profile's on-
-// disk storage but isn't actively running this page's JS. That is a real but
-// modest bar — full encryption-at-rest with a key the page itself can't
-// access isn't achievable in a browser without a mechanism (a hardware key,
-// a server-held key) this app doesn't have.
-async function getOrCreateKey(): Promise<CryptoKey> {
-  let raw: string | null = null
-  try {
-    raw = localStorage.getItem(KEY_STORAGE_KEY)
-  } catch {
-    // localStorage unavailable (private mode, quota) — fall through to a
-    // fresh in-memory-only key; the queue still works for this tab's
-    // lifetime, just re-encrypts under a new key next load.
-  }
-
-  if (raw) {
-    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))
-    return crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['encrypt', 'decrypt'])
-  }
-
-  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
-  const exported = await crypto.subtle.exportKey('raw', key)
-  const b64 = btoa(String.fromCharCode(...new Uint8Array(exported)))
-  try {
-    localStorage.setItem(KEY_STORAGE_KEY, b64)
-  } catch {
-    // Can't persist — next load will generate a new key and this queue's
-    // existing entries (encrypted under the old, now-lost key) become
-    // undecryptable. Acceptable: this only happens when localStorage itself
-    // is unavailable, in which case nothing else here would have persisted
-    // across a reload anyway.
-  }
-  return key
-}
-
-async function encrypt(key: CryptoKey, value: unknown): Promise<{ iv: string; ciphertext: string }> {
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const plaintext = new TextEncoder().encode(JSON.stringify(value))
-  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
-  return {
-    iv: btoa(String.fromCharCode(...iv)),
-    ciphertext: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
-  }
-}
-
-async function decrypt(key: CryptoKey, iv: string, ciphertext: string): Promise<unknown> {
-  const ivBytes = Uint8Array.from(atob(iv), (c) => c.charCodeAt(0))
-  const cipherBytes = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0))
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, key, cipherBytes)
-  return JSON.parse(new TextDecoder().decode(decrypted))
-}
-
-// --- IndexedDB plumbing ---
+type StoredRecord = Omit<QueuedWrite, 'data'> & { iv: string; ciphertext: string; lastError?: string; fingerprint: string }
+let activeOwner: string | null = null
+export function setQueueOwner(owner: string | null) { activeOwner = owner; void notifyListeners().catch(() => {}) }
+export function getQueueOwner() { return activeOwner }
+function requireOwner(owner = activeOwner): string { if (!owner) throw Error('Hisobga kiring'); return owner }
+function assertOwner(owner: string) { if (activeOwner !== owner) throw Error('Hisob o‘zgardi; amal o‘z hisobida saqlanadi') }
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' })
+    const request = indexedDB.open(DB_NAME, 2)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      // Preserve the old unowned writeQueue and its key for manual recovery.
+      if (!db.objectStoreNames.contains(STORE)) {
+        const store = db.createObjectStore(STORE, { keyPath: ['owner', 'id'] }); store.createIndex('owner', 'owner')
       }
+      if (!db.objectStoreNames.contains(KEYS)) db.createObjectStore(KEYS)
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+    request.onblocked = () => reject(Error('Boshqa eski tabni yoping; navbat yangilanishi kutilmoqda'))
   })
 }
-
-async function withStore<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function transaction<T>(storeName: string | string[], mode: IDBTransactionMode, work: (store: IDBObjectStore, result: (value: T) => void) => void): Promise<T> {
   const db = await openDb()
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, mode)
-    const store = tx.objectStore(STORE_NAME)
-    const req = fn(store)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    const tx = db.transaction(storeName, mode)
+    let value: T
+    tx.oncomplete = () => { db.close(); resolve(value) }
+    tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? Error('Navbat saqlanmadi')) }
+    try { work(tx.objectStore(Array.isArray(storeName) ? storeName[0] : storeName), next => { value = next }) }
+    catch (error) { tx.abort(); reject(error) }
   })
 }
 
-// --- Pub/sub for the UI banner ---
-
-type Listener = (count: number) => void
-const listeners = new Set<Listener>()
-
-export function subscribeOfflineQueueCount(listener: Listener): () => void {
+// Key creation is committed in the same serialized IndexedDB read/write
+// transaction across tabs. No temporary or unpersisted key fallback exists.
+// This does not protect against JavaScript running in the authenticated origin.
+async function getOrCreateKey(owner: string): Promise<CryptoKey> {
+  const candidate = await crypto.subtle.generateKey({name: 'AES-GCM', length: 256}, false, ['encrypt', 'decrypt'])
+  return transaction<CryptoKey>(KEYS, 'readwrite', (store, result) => {
+    const request = store.get(owner)
+    request.onsuccess = () => { const key = request.result ?? candidate; if (!request.result) store.add(key, owner); result(key) }
+  })
+}
+function b64(value: ArrayBuffer | Uint8Array) { return btoa(Array.from(value instanceof Uint8Array ? value : new Uint8Array(value), n => String.fromCharCode(n)).join('')) }
+function bytes(value: string) { return Uint8Array.from(atob(value), character => character.charCodeAt(0)) }
+async function records(owner: string): Promise<StoredRecord[]> {
+  return transaction(STORE, 'readonly', (store, result) => { const request = store.index('owner').getAll(owner); request.onsuccess = () => result(request.result) })
+}
+export async function enqueueWrite(item: Omit<QueuedWrite, 'createdAt' | 'owner'> & { owner?: string }): Promise<void> {
+  item = structuredClone(item)
+  const owner = requireOwner(item.owner); assertOwner(owner)
+  const key = await getOrCreateKey(owner)
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const aad = new TextEncoder().encode(JSON.stringify([owner, item.id, item.method, item.url]))
+  const encrypted = await crypto.subtle.encrypt({name: 'AES-GCM', iv, additionalData: aad}, key, new TextEncoder().encode(JSON.stringify(item.data)))
+  const fingerprint = b64(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([item.method,item.url,item.data]))))
+  const record: StoredRecord = {fingerprint,id: item.id,owner,method:item.method,url:item.url,createdAt:Date.now(),iv:b64(iv),ciphertext:b64(encrypted)}
+  const compatible = await transaction<boolean>([STORE, KEYS], 'readwrite', (store, result) => {
+    const request=store.get([owner,item.id])
+    // Existing immutable intent wins. The same ID is only replayed, never
+    // replaced by a modified payload after a lost response.
+    request.onsuccess=()=>{
+      if (request.result) { result(request.result.fingerprint === fingerprint); return }
+      const metadata = store.transaction.objectStore(KEYS)
+      const sequenceKey = [owner,'sequence']
+      const sequence = metadata.get(sequenceKey)
+      sequence.onsuccess = () => {
+        record.sequence = Number(sequence.result ?? 0) + 1
+        metadata.put(record.sequence, sequenceKey)
+        store.add(record); result(true)
+      }
+    }
+  })
+  if (!compatible) throw Error('Amal ID boshqa ma’lumotlar bilan qayta ishlatilgan')
+  assertOwner(owner); void notifyListeners().catch(() => {})
+}
+export async function getQueuedWrites(owner = requireOwner()): Promise<QueuedWrite[]> {
+  const [stored, key] = await Promise.all([records(owner), getOrCreateKey(owner)])
+  const result: QueuedWrite[] = []
+  for (const record of stored) {
+    try {
+      const aad = new TextEncoder().encode(JSON.stringify([owner,record.id,record.method,record.url]))
+      const raw = await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(record.iv),additionalData:aad},key,bytes(record.ciphertext))
+      result.push({...record,data:JSON.parse(new TextDecoder().decode(raw))})
+    } catch {
+      // Corrupt ciphertext remains on disk and in the pending count. Other
+      // valid records can still be replayed; no empty replacement is written.
+    }
+  }
+  return result.sort((a,b)=>(a.sequence ?? a.createdAt)-(b.sequence ?? b.createdAt))
+}
+export async function removeQueuedWrite(id: string, owner = requireOwner()): Promise<void> {
+  await transaction(STORE,'readwrite',(store,result)=>{store.delete([owner,id]);result(undefined)})
+  void notifyListeners().catch(() => {})
+}
+export async function markQueuedWriteForReview(id: string, message: string, owner = requireOwner()): Promise<void> {
+  await transaction(STORE, 'readwrite', (store,result) => {
+    const request=store.get([owner,id])
+    request.onsuccess=()=>{ if(request.result) store.put({...request.result,lastError:message});result(undefined) }
+  })
+  void notifyListeners().catch(()=>{})
+}
+export async function retryReviewedWrite(id:string,owner=requireOwner()) {
+  assertOwner(owner)
+  await transaction(STORE,'readwrite',(store,result)=>{
+    const request=store.get([owner,id]);request.onsuccess=()=>{if(request.result){const record=request.result;delete record.lastError;store.put(record)}result(undefined)}
+  })
+  assertOwner(owner)
+  void notifyListeners().catch(()=>{})
+}
+export async function assertNoPendingProductWrites(ids:string[]) {
+  const owner=requireOwner();const pending=await getQueuedWrites(owner);assertOwner(owner)
+  if((await records(owner)).length!==pending.length || pending.some(item=>dependencies(item).some(id=>ids.includes(id)))) throw Error('Mahsulotga tegishli tasdiqlanmagan amal bor. Avval navbatni tekshiring.')
+}
+export async function getQueueCount(): Promise<number> { const owner=activeOwner; return owner ? (await records(owner)).length : 0 }
+type Listener=(count:number)=>void
+const listeners=new Set<Listener>()
+export function subscribeOfflineQueueCount(listener: Listener) {
   listeners.add(listener)
-  return () => listeners.delete(listener)
+  const owner=activeOwner
+  void getQueueCount().then(count=>{if(listeners.has(listener)&&owner===activeOwner)listener(count)}).catch(()=>{})
+  return ()=>{listeners.delete(listener)}
 }
+async function notifyListeners() { const owner=activeOwner;const count=await getQueueCount();if(owner===activeOwner) listeners.forEach(listener=>listener(count)) }
 
-async function notifyListeners() {
-  const count = await getQueueCount()
-  listeners.forEach((l) => l(count))
+function dependencies(item: QueuedWrite): string[] {
+  const data = item.data as {productId?:string;lines?: {productId:string}[];items?:{productId:string}[]}
+  const ids = (data?.lines ?? data?.items ?? []).map(row=>row.productId)
+  if(data?.productId) ids.push(data.productId)
+  return ids.length ? ids : [item.url]
 }
-
-// --- Public API ---
-
-export async function enqueueWrite(item: Omit<QueuedWrite, 'createdAt'>): Promise<void> {
-  const key = await getOrCreateKey()
-  const { iv, ciphertext } = await encrypt(key, item.data)
-  const record: StoredRecord = {
-    id: item.id,
-    method: item.method,
-    url: item.url,
-    createdAt: Date.now(),
-    iv,
-    ciphertext,
-  }
-  await withStore('readwrite', (store) => store.put(record))
-  void notifyListeners()
-}
-
-export async function getQueuedWrites(): Promise<QueuedWrite[]> {
-  const records = await withStore<StoredRecord[]>('readonly', (store) => store.getAll())
-  const key = await getOrCreateKey()
-  const items = await Promise.all(
-    records.map(async (r) => ({
-      id: r.id,
-      method: r.method,
-      url: r.url,
-      createdAt: r.createdAt,
-      data: await decrypt(key, r.iv, r.ciphertext),
-    })),
-  )
-  // FIFO — oldest queued write first, so a flush replays operations in the
-  // order they actually happened.
-  return items.sort((a, b) => a.createdAt - b.createdAt)
-}
-
-export async function removeQueuedWrite(id: string): Promise<void> {
-  await withStore('readwrite', (store) => store.delete(id))
-  void notifyListeners()
-}
-
-export async function getQueueCount(): Promise<number> {
+const flushing=new Set<string>()
+export async function flushOfflineQueue(send:(item:QueuedWrite)=>Promise<void>):Promise<void> {
+  const owner=activeOwner
+  if(!owner || flushing.has(owner)) return
+  flushing.add(owner)
   try {
-    const records = await withStore<StoredRecord[]>('readonly', (store) => store.getAll())
-    return records.length
-  } catch {
-    return 0
-  }
-}
-
-let flushing = false
-
-/**
- * Replays queued writes in order via `send`, removing each on success.
- * Stops at the first failure (rather than skipping ahead) so a write that
- * depends on an earlier one's effect (e.g. two sales against the same
- * product's stock) is never applied out of order. `send` reuses the item's
- * own `id` as the idempotencyKey, so a write that the server actually
- * received on a previous, interrupted flush attempt is recognized and not
- * double-applied (see idempotency.service.ts on the backend).
- */
-export async function flushOfflineQueue(send: (item: QueuedWrite) => Promise<void>): Promise<void> {
-  if (flushing) return
-  flushing = true
-  try {
-    const items = await getQueuedWrites()
-    for (const item of items) {
-      try {
-        await send(item)
-        await removeQueuedWrite(item.id)
-      } catch (error) {
-        console.warn('[offlineQueue] flush stopped — still unreachable or a real error', error)
+    const items=await getQueuedWrites(owner)
+    const blocked=new Set<string>()
+    for(const item of items) {
+      assertOwner(owner)
+      const resources=dependencies(item)
+      if(item.lastError) { resources.forEach(resource=>blocked.add(resource));continue }
+      if(resources.some(resource=>blocked.has(resource))) continue
+      try { await send(item); await removeQueuedWrite(item.id,owner) }
+      catch(error) {
+        const status=(error as {status?:number})?.status
+        if(status && [400,403,404,409,422].includes(status)) {
+          await markQueuedWriteForReview(item.id,(error as Error).message || `HTTP ${status}`,owner)
+          resources.forEach(resource=>blocked.add(resource));continue
+        }
         break
       }
     }
-  } finally {
-    flushing = false
-  }
+  } finally {flushing.delete(owner)}
 }

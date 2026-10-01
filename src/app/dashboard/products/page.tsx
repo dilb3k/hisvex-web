@@ -1,4 +1,5 @@
 'use client'
+import { assertNoPendingProductWrites } from '@/lib/offlineQueue'
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -360,6 +361,7 @@ export default function ProductsPage() {
       }
     }
     const payload: Record<string, unknown> = {
+      baseVersion: editingProduct?.serverVersion ?? 0,
       name: form.name.trim(),
       quantity: parseQuantityInput(form.quantity, form.unit),
       unit: form.unit,
@@ -374,6 +376,7 @@ export default function ProductsPage() {
     setIsSubmitting(true)
     try {
       if (editingProduct) {
+        await assertNoPendingProductWrites([editingProduct._id, editingProduct.localId??editingProduct._id])
         await productsApi.update(editingProduct._id, payload)
       } else {
         await productsApi.create(payload)
@@ -412,7 +415,8 @@ export default function ProductsPage() {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      await productsApi.delete(deleteTarget._id)
+      await assertNoPendingProductWrites([deleteTarget.localId??deleteTarget._id,deleteTarget._id])
+      await productsApi.delete(deleteTarget._id,deleteTarget.serverVersion??0)
       setShowDeleteModal(false); setDeleteTarget(null)
       closeProductModal()
       clearApiCache()
@@ -471,9 +475,8 @@ export default function ProductsPage() {
     }
     setIsRestocking(true)
     try {
-      const { data: freshProduct } = await productsApi.getById(restockProduct._id)
-      const currentQty = freshProduct?.quantity ?? restockProduct.quantity ?? 0
-      await productsApi.update(restockProduct._id, { quantity: roundQty(currentQty + qtyToAdd), unit })
+      const response = await productsApi.restock(restockProduct.localId ?? restockProduct._id, qtyToAdd)
+      if (response.status === 202) showToast("Kirim saqlandi; server tasdig‘i kutilmoqda", 'info')
       closeRestockModal()
       clearApiCache()
       await refreshAll()
@@ -907,7 +910,7 @@ export default function ProductsPage() {
                   </div>
                 )}
                 {form.barcodes.length === 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>Shtrixkod yo'q</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>Shtrixkod yo‘q</div>
                 )}
                 {/* item 8 — duplicate-barcode conflict (client-side pre-check or
                     server 409), surfaced next to the field instead of only a toast. */}
@@ -964,7 +967,7 @@ export default function ProductsPage() {
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button onClick={() => setShowBarcodeInput(false)} className="btn btn-secondary">{t('cancel')}</button>
-              <button onClick={handleConfirmBarcode} className="btn btn-primary">Qo'shish</button>
+              <button onClick={handleConfirmBarcode} className="btn btn-primary">Qo‘shish</button>
             </div>
           </div>
         </div>

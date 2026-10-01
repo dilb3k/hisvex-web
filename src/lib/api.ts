@@ -4,7 +4,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
 import type { AuthResponse, AuthSuccess, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
 import { getBusinessDate } from './businessDay'
-import { enqueueWrite, flushOfflineQueue } from './offlineQueue'
+import { enqueueWrite, flushOfflineQueue, setQueueOwner, getQueueOwner, removeQueuedWrite, markQueuedWriteForReview } from './offlineQueue'
 
 interface InventoryResponse {
   items: InventoryItem[]
@@ -62,7 +62,7 @@ function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
 // edits, debtor adjustments, admin actions) still surfaces as a normal error
 // rather than silently queuing — broadening this list is follow-up work, not
 // a default to reach for without checking each endpoint's own replay safety.
-const OFFLINE_QUEUABLE_PATHS = ['/inventory/sales', '/inventory/start-day', '/inventory/bulk-current']
+const OFFLINE_QUEUABLE_PATHS = ['/inventory/operations', '/inventory/sales', '/inventory/start-day', '/inventory/bulk-current']
 
 function isOfflineQueuable(config: InternalAxiosRequestConfig): boolean {
   const url = config.url ?? ''
@@ -70,12 +70,22 @@ function isOfflineQueuable(config: InternalAxiosRequestConfig): boolean {
   return (method === 'post' || method === 'put') && OFFLINE_QUEUABLE_PATHS.some((p) => url.includes(p))
 }
 
+function sessionIdentity(token: string | null): string {
+  if (!token) return ''
+  try { const p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return `${p.userId}:${p.sessionId??''}` } catch { return token }
+}
+let authEpoch=0
 let apiToken: string | null = null
 let apiRefreshToken: string | null = null
 let unauthorizedHandler: (() => void) | null = null
 
 export function setApiToken(token: string | null) {
+  if(sessionIdentity(token)!==sessionIdentity(apiToken)) {authEpoch++;refreshPromise=null}
   apiToken = token
+  let owner: string | null = null
+  try { owner = token ? JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).userId ?? null : null } catch {}
+  setQueueOwner(owner)
+  clearApiCache()
 }
 
 export function setRefreshToken(token: string | null) {
@@ -143,26 +153,29 @@ api.interceptors.response.use(
   }
 )
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  if ((config as any)._authEpoch !== undefined && (config as any)._authEpoch !== authEpoch) throw Error('Sessiya o‘zgardi')
+  ;(config as any)._authEpoch=authEpoch
+  if (config.headers['X-Account-ID'] && config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error('Hisob o‘zgardi')
+  if (getQueueOwner()) config.headers['X-Account-ID'] = getQueueOwner()
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) config.headers.delete('Content-Type')
+  config.headers['X-Client-Protocol']='2'
+  if(!['get','head','options'].includes(config.method??'get')) config.headers['Idempotency-Key'] ??= crypto.randomUUID()
   if (apiToken) {
     config.headers.Authorization = `Bearer ${apiToken}`
   }
-  if (config.timeout === undefined) {
+  if (!config.timeout) {
     config.timeout = isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
   }
-  // Stamped once per logical request, not once per attempt: a retry (the
-  // failover-retry below, or a replay from the offline queue) reuses the
-  // SAME config object, so this only runs the first time and the key
-  // travels unchanged through every subsequent attempt — which is the whole
-  // point, since the backend dedupes on it (see idempotency.service.ts).
-  if (
-    isOfflineQueuable(config) &&
-    config.data &&
-    typeof config.data === 'object' &&
-    !('idempotencyKey' in config.data)
-  ) {
-    ;(config.data as Record<string, unknown>).idempotencyKey =
-      typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  if (isOfflineQueuable(config)) {
+    // Axios may have serialized data on a prior attempt. Recover the same
+    // payload and identity rather than generating another sale ID.
+    const data = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    if (!data || typeof data !== 'object') throw new Error('Amal ma’lumotlari noto‘g‘ri')
+    data.idempotencyKey ??= data.id ?? crypto.randomUUID()
+    config.headers['Idempotency-Key'] = data.idempotencyKey
+    config.data = data
+    if (!(config as any)._queueReplay) await enqueueWrite({id:data.idempotencyKey,method:config.method as 'post'|'put',url:config.url!,data,owner:getQueueOwner()!})
   }
   if (config.method === 'get') {
     // Stamp the generation active at dispatch time so the response handler can tell
@@ -171,13 +184,13 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     const key = cacheKey(config)
     const hit = cache.get(key)
     if (hit && Date.now() - hit.ts < CACHE_TTL) {
-      config.adapter = () => Promise.resolve({ data: hit.data, status: 200, statusText: 'OK', headers: {}, config })
+      config.adapter = () => Promise.resolve({ data: hit.data, status: 200, statusText: 'OK', headers: { 'x-local-cache': 'hit' }, config })
     }
   }
   return config
 })
 
-let refreshPromise: Promise<'ok' | 'failed'> | null = null
+let refreshPromise: Promise<'ok' | 'failed' | 'network' | 'changed'> | null = null
 
 // Token this device held right before another device logged into the same
 // account and got it kicked (see SESSION_REPLACED below). Kept separately
@@ -229,7 +242,7 @@ function handleSessionExpired(
     try { localStorage.setItem(STORAGE_KEY_STALE_TOKEN, apiToken) } catch {}
   }
 
-  apiToken = null
+  setApiToken(null)
   apiRefreshToken = null
   cache.clear()
   cacheGeneration++
@@ -256,7 +269,12 @@ function handleSessionExpired(
 }
 
 api.interceptors.response.use(
-  (response) => {
+  async (response) => {
+    if ((response.config as any)._authEpoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
+    if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error('Hisob o‘zgardi')
+    if (isOfflineQueuable(response.config) && !(response.config as any)._queueReplay) {
+      await removeQueuedWrite(String(response.config.headers['Idempotency-Key']), String(response.config.headers['X-Account-ID']))
+    }
     const body = response.data
     if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
       response.data = body.data
@@ -266,7 +284,7 @@ api.interceptors.response.use(
       // otherwise it's a stale in-flight read racing a mutation's cache-clear, and
       // writing it in would silently resurrect pre-mutation data.
       const reqGen = (response.config as InternalAxiosRequestConfig & { _cacheGen?: number })._cacheGen
-      if (reqGen === cacheGeneration) {
+      if (reqGen === cacheGeneration && !response.headers['x-local-cache']) {
         cache.set(cacheKey(response.config), { data: response.data, ts: Date.now() })
       }
     } else {
@@ -280,13 +298,15 @@ api.interceptors.response.use(
       // reload. flushOfflineQueue no-ops cheaply when the queue is empty or
       // already flushing, so this is safe to fire on every mutation.
       void flushOfflineQueue((item) =>
-        api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
-      )
+        api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any).then(() => undefined),
+      ).catch(() => {})
     }
     return response
   },
   async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    if (originalRequest && (originalRequest as any)._authEpoch !== authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
+    if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getQueueOwner()) return Promise.reject(new Error('Hisob o‘zgardi'))
     const url = originalRequest?.url ?? ''
     const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
@@ -301,36 +321,26 @@ api.interceptors.response.use(
     // a read).
     if (
       originalRequest &&
-      isBothBackendsDown(error) &&
+      !(originalRequest as any)._queueReplay &&
+      (isBothBackendsDown(error) || !error.response || error.response.status >= 500 || [400,403,404,409,422].includes(error.response.status)) &&
       isOfflineQueuable(originalRequest)
     ) {
-      // config.data is still the original plain object at this point — axios
-      // only serializes it to a string internally when actually dispatching,
-      // it doesn't mutate config.data itself.
-      const data = (originalRequest.data as Record<string, unknown>) ?? {}
-      const id = (data.idempotencyKey as string | undefined) ?? crypto.randomUUID()
-      try {
-        await enqueueWrite({
-          id,
-          method: (originalRequest.method as 'post' | 'put') ?? 'post',
-          url: originalRequest.url ?? '',
-          data,
-        })
-        console.warn(`[api] Both backends unreachable — queued ${originalRequest.url} for offline replay (${id}).`)
-        return { data, status: 200, statusText: 'OK (queued offline)', headers: {}, config: originalRequest }
-      } catch (queueError) {
-        console.error('[api] Failed to queue write for offline replay — surfacing the original error', queueError)
-        // Fall through to the normal error path below; the operation is
-        // genuinely lost otherwise, and the caller needs to know that
-        // rather than believe it was queued.
-      }
+      // Intent was persisted before dispatch. A failed response never
+      // changes its ID or claims the server has committed it.
+      const needsReview=!!error.response && [400,403,404,409,422].includes(error.response.status)
+      const message=error.response?.data?.error?.message ?? error.response?.data?.message ?? 'Server amalni rad etdi'
+      if(needsReview) await markQueuedWriteForReview(String(originalRequest.headers['Idempotency-Key']),message,String(originalRequest.headers['X-Account-ID']))
+      return { data: { queued: true, needsReview, message:needsReview?message:undefined }, status: 202, statusText: 'Queued; awaiting confirmation', headers: {}, config: originalRequest }
     }
 
     if (error.response?.status === 401 && !isAuthEndpoint && apiRefreshToken && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true
+      const refreshEpoch=authEpoch
+      const refreshingToken=apiRefreshToken
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
-          const res = await rawAxios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken: apiRefreshToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          const res = await rawAxios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          if(refreshEpoch!==authEpoch) return 'changed' as const
           const body = res.data
           const data = body && typeof body === 'object' && 'success' in body && 'data' in body ? body.data : body
           const newToken: string = data.token
@@ -341,11 +351,14 @@ api.interceptors.response.use(
           try { localStorage.setItem('hisvex_refresh', newRefresh) } catch {}
           tokensRefreshedHandler?.(newToken, newRefresh)
           return 'ok' as const
-        } catch {
-          return 'failed' as const
+        } catch (refreshError: any) {
+          if(refreshEpoch!==authEpoch) return 'changed' as const
+          return [400,401,403].includes(refreshError?.response?.status)?'failed' as const:'network' as const
         }
-      })().finally(() => { refreshPromise = null }))
+      })().finally(() => { if(refreshEpoch===authEpoch) refreshPromise = null }))
       return pending.then((result) => {
+        if(refreshEpoch!==authEpoch || result==='changed') return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
+        if(result==='network') return Promise.reject(Object.assign(Error('Tokenni yangilash uchun server bilan aloqa yo‘q'),{code:'REFRESH_NETWORK_ERROR'}))
         if (result === 'failed') {
           return Promise.reject(handleSessionExpired(error))
         }
@@ -377,7 +390,7 @@ api.interceptors.response.use(
     } else {
       message = error.message || 'API xatoligi'
     }
-    return Promise.reject(new Error(message))
+    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status }))
   },
 )
 
@@ -428,7 +441,8 @@ export const productsApi = {
   getById: (id: string) => api.get<Product>(`/products/${id}`),
   create: (data: Partial<Product>) => api.post<Product>('/products', data),
   update: (id: string, data: Partial<Product>) => api.put<Product>(`/products/${id}`, data),
-  delete: (id: string) => api.delete(`/products/${id}`),
+  delete: (id: string,baseVersion:number) => api.delete(`/products/${id}`,{data:{baseVersion}}),
+  restock: (productId: string, quantity: number) => api.post('/inventory/operations', { kind: 'restock', id: crypto.randomUUID(), deviceId: getDeviceId(), occurredAt: new Date().toISOString(), productId, quantity }),
   // Multipart upload to the R2-backed endpoint. Field name must be "image" to
   // match the backend's `imageUpload.single("image")` middleware. No
   // Content-Type header here — axios sets `multipart/form-data; boundary=...`
@@ -454,13 +468,13 @@ export function getDeviceId(): string {
 export const inventoryApi = {
   getByDate: (from: string, to: string) => api.get<InventoryResponse>('/inventory', { params: { from, to } }),
   getDashboard: () => api.get<DashboardData>('/inventory/dashboard'),
-  startDay: (items: { productId: string; startQuantity: number; currentQuantity?: number; note?: string; localId?: string; createdAt?: string; updatedAt?: string }[]) =>
+  startDay: (items: { productId: string; baseVersion?: number; startQuantity: number; currentQuantity?: number; note?: string; localId?: string; createdAt?: string; updatedAt?: string }[]) =>
     api.post('/inventory/start-day', { deviceId: getDeviceId(), date: getBusinessDate(), items }),
   /**
    * `lineRevenue` restates the money taken for everything this edit counts as
    * sold (the "Kutilgan tushum" field). Profit follows from it automatically.
    */
-  bulkUpdate: (items: { productId: string; currentQuantity: number; lineRevenue?: number; note?: string }[]) =>
+  bulkUpdate: (items: { productId: string; baseVersion: number; currentQuantity: number; lineRevenue?: number; note?: string }[]) =>
     api.put('/inventory/bulk-current', { deviceId: getDeviceId(), date: getBusinessDate(), items }),
   /**
    * A line states what it actually brought in: `lineRevenue` is the money for
@@ -469,9 +483,9 @@ export const inventoryApi = {
    */
   recordSales: (
     date: string,
-    lines: { productId: string; quantity: number; unitPrice?: number; lineRevenue?: number }[],
+    lines: { productId: string; quantity: number; lineRevenue: number; expectedBuyPrice: number; expectedUnit: "dona"|"kg"; expectedStockEpoch: number }[],
   ) =>
-    api.post('/inventory/sales', { date, deviceId: getDeviceId(), lines }),
+    api.post('/inventory/operations', { kind: 'sale', id: crypto.randomUUID(), occurredAt: new Date().toISOString(), date, deviceId: getDeviceId(), lines }),
 }
 
 export const snapshotsApi = {
@@ -542,8 +556,8 @@ export function resolveImageUrl(imageUrl?: string | null, image?: string, imageH
 // above only covers a recovery that happens while this tab is already open.
 export function flushOfflineQueueOnStartup() {
   void flushOfflineQueue((item) =>
-    api({ method: item.method, url: item.url, data: item.data }).then(() => undefined),
-  )
+    api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any).then(() => undefined),
+  ).catch(() => {})
 }
 
 export default api
