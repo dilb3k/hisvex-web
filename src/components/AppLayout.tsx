@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { Sidebar } from './Sidebar'
-import { PendingOperations } from './PendingOperations'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { subscribeOfflineQueueCount } from '@/lib/offlineQueue'
@@ -53,7 +52,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </span>
             </div>
           )}
-          {queuedCount > 0 && <PendingOperations count={queuedCount} />}
           {error && (
             <div
               role="alert"
