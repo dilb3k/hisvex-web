@@ -155,6 +155,17 @@ export async function flushOfflineQueue(send:(item:QueuedWrite)=>Promise<void>):
       try { await send(item); await removeQueuedWrite(item.id,owner) }
       catch(error) {
         const status=(error as {status?:number})?.status
+        const code=(error as {code?:string})?.code
+        // ROUTE_NOT_FOUND (backend's notFoundMiddleware) means the endpoint
+        // itself isn't recognized — a frontend/backend deploy briefly out of
+        // sync — not that the server understood the request and rejected it
+        // on business grounds (e.g. a genuinely deleted product, which is
+        // still 404 but a real, permanent business state worth reviewing).
+        // Treated like a network failure instead: stop this flush and retry
+        // the whole queue on the next automatic attempt, so it self-heals
+        // once the deploy mismatch resolves rather than being silently
+        // stranded in "needs review" forever.
+        if(status===404 && code==='ROUTE_NOT_FOUND') break
         if(status && [400,403,404,409,422].includes(status)) {
           await markQueuedWriteForReview(item.id,(error as Error).message || `HTTP ${status}`,owner)
           resources.forEach(resource=>blocked.add(resource));continue

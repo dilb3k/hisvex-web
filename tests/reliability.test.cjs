@@ -41,6 +41,20 @@ test('a rejected product does not block unrelated operations and no rejection is
   assert.deepEqual(sent,[a.id,b.id]);assert.equal(await q.getQueueCount(),2)
   assert.deepEqual(Array.from(await q.getQueuedWrites(),row=>row.id),[a.id,c.id])
 })
+test('a ROUTE_NOT_FOUND 404 (deploy/version mismatch) is retried, never parked for review',async()=>{
+  const q=queue();q.setQueueOwner('A');const a=item();const b=item()
+  await q.enqueueWrite(a);await q.enqueueWrite(b)
+  let attempts=0
+  await q.flushOfflineQueue(async()=>{attempts++;throw Object.assign(Error('Yo’nalish topilmadi'),{status:404,code:'ROUTE_NOT_FOUND'})})
+  assert.equal(attempts,1,'stops this flush like a network failure, does not mark for review')
+  assert.equal(await q.getQueueCount(),2)
+  assert.ok((await q.getQueuedWrites()).every(row=>!row.lastError))
+  // Once the route genuinely exists again, both items go through normally —
+  // nothing was ever quarantined.
+  const sent=[]
+  await q.flushOfflineQueue(async row=>{sent.push(row.id)})
+  assert.equal(sent.length,2);assert.equal(await q.getQueueCount(),0)
+})
 test('timeout/unknown outcome preserves every operation for retry',async()=>{
   const q=queue();q.setQueueOwner('A');await q.enqueueWrite(item());await q.enqueueWrite(item())
   let attempts=0;await q.flushOfflineQueue(async()=>{attempts++;throw Error('response lost')})

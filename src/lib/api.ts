@@ -379,9 +379,14 @@ api.interceptors.response.use(
     }
     const data = error.response?.data
     let message: string
+    // Backend AppError codes (e.g. ROUTE_NOT_FOUND) were previously dropped
+    // here — offlineQueue.ts's flush loop needs `code` to tell a genuine
+    // route/deploy mismatch apart from a real business 404.
+    let code: string | undefined
     if (data && typeof data === 'object') {
       if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
         message = data.error.message
+        code = (data.error as { code?: string }).code
       } else if ('message' in data && typeof data.message === 'string') {
         message = data.message
       } else {
@@ -390,7 +395,7 @@ api.interceptors.response.use(
     } else {
       message = error.message || 'API xatoligi'
     }
-    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status }))
+    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status, code }))
   },
 )
 
