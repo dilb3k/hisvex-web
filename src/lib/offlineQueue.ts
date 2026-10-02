@@ -118,6 +118,26 @@ export async function retryReviewedWrite(id:string,owner=requireOwner()) {
   assertOwner(owner)
   void notifyListeners().catch(()=>{})
 }
+// Clears every parked-for-review item at once, for a manual "retry all"
+// action — e.g. after a deploy mismatch is fixed and items were wrongly
+// parked before that fix shipped (see ROUTE_NOT_FOUND handling above).
+export async function retryAllReviewedWrites(owner=requireOwner()): Promise<number> {
+  assertOwner(owner)
+  const cleared=await transaction<number>(STORE,'readwrite',(store,result)=>{
+    let count=0
+    const request=store.index('owner').openCursor(IDBKeyRange.only(owner))
+    request.onsuccess=()=>{
+      const cursor=request.result
+      if(cursor){
+        if(cursor.value.lastError){const record={...cursor.value};delete record.lastError;cursor.update(record);count++}
+        cursor.continue()
+      } else result(count)
+    }
+  })
+  assertOwner(owner)
+  void notifyListeners().catch(()=>{})
+  return cleared
+}
 export async function assertNoPendingProductWrites(ids:string[]) {
   const owner=requireOwner();const pending=await getQueuedWrites(owner);assertOwner(owner)
   if((await records(owner)).length!==pending.length || pending.some(item=>dependencies(item).some(id=>ids.includes(id)))) throw Error('Mahsulotga tegishli tasdiqlanmagan amal bor. Avval navbatni tekshiring.')

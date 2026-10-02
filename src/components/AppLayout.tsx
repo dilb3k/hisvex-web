@@ -4,14 +4,33 @@ import { useEffect, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
-import { subscribeOfflineQueueCount } from '@/lib/offlineQueue'
+import { subscribeOfflineQueueCount, retryAllReviewedWrites, getQueueOwner } from '@/lib/offlineQueue'
 import { flushOfflineQueueOnStartup } from '@/lib/api'
-import { X, AlertTriangle, CheckCircle, Info, WifiOff } from 'lucide-react'
+import { X, AlertTriangle, CheckCircle, Info, WifiOff, RotateCw } from 'lucide-react'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { error, clearError, toast, hideToast } = useAppStore()
+  const { error, clearError, toast, hideToast, showToast } = useAppStore()
   const isOffline = useAuthStore((s) => s.isOffline)
   const [queuedCount, setQueuedCount] = useState(0)
+  const [retrying, setRetrying] = useState(false)
+
+  const handleRetryNow = async () => {
+    const owner = getQueueOwner()
+    if (!owner || retrying) return
+    setRetrying(true)
+    try {
+      // Items that were previously rejected and parked (e.g. a route that
+      // briefly didn't exist during a deploy) are otherwise never retried
+      // automatically again — this re-queues all of them for one more try.
+      await retryAllReviewedWrites(owner)
+      flushOfflineQueueOnStartup()
+      showToast('Navbat qayta tekshirildi', 'info')
+    } catch {
+      showToast('Qayta urinib bo‘lmadi', 'error')
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   useEffect(() => {
     // Replays anything left queued from a previous session (tab closed while
@@ -62,6 +81,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 Server tasdig‘ini kutayotgan yozuvlar bo‘lishi mumkin. Hisobotda faqat tasdiqlangan ma’lumotlar aks etadi.
                 {queuedCount > 0 ? ` (${queuedCount} ta yozuv navbatda)` : ''}
               </span>
+              {queuedCount > 0 && (
+                <button
+                  onClick={handleRetryNow}
+                  disabled={retrying}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'none', border: '1px solid currentColor', borderRadius: 6,
+                    color: 'var(--color-warning)', fontSize: 12, fontWeight: 600,
+                    padding: '4px 10px', cursor: retrying ? 'default' : 'pointer', opacity: retrying ? 0.6 : 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  <RotateCw size={13} style={{ animation: retrying ? 'spin 0.8s linear infinite' : 'none' }} />
+                  Qayta urinish
+                </button>
+              )}
             </div>
           )}
           {error && (

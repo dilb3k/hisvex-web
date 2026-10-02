@@ -4,11 +4,11 @@ const { readFileSync } = require('node:fs')
 const vm = require('node:vm')
 const ts = require('typescript')
 const { webcrypto, randomUUID } = require('node:crypto')
-const { IDBFactory } = require('fake-indexeddb')
+const { IDBFactory, IDBKeyRange } = require('fake-indexeddb')
 const transpile = file => ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
 const queueSource = transpile('src/lib/offlineQueue.ts')
 function queue(indexedDB = new IDBFactory()) {
-  const context={exports:{},indexedDB,crypto:webcrypto,TextEncoder,TextDecoder,atob,btoa,structuredClone}
+  const context={exports:{},indexedDB,IDBKeyRange,crypto:webcrypto,TextEncoder,TextDecoder,atob,btoa,structuredClone}
   vm.runInNewContext(queueSource,context)
   return context.exports
 }
@@ -54,6 +54,18 @@ test('a ROUTE_NOT_FOUND 404 (deploy/version mismatch) is retried, never parked f
   const sent=[]
   await q.flushOfflineQueue(async row=>{sent.push(row.id)})
   assert.equal(sent.length,2);assert.equal(await q.getQueueCount(),0)
+})
+test('retryAllReviewedWrites clears every parked item and lets the next flush send them',async()=>{
+  const q=queue();q.setQueueOwner('A');const a=item('p1');const b=item('p2');const c=item('p3')
+  await q.enqueueWrite(a);await q.enqueueWrite(b);await q.enqueueWrite(c)
+  await q.flushOfflineQueue(async row=>{if(row.id!==c.id) throw Object.assign(Error('rejected'),{status:409})})
+  assert.equal((await q.getQueuedWrites()).filter(row=>row.lastError).length,2,'a and b were parked for review')
+  const cleared=await q.retryAllReviewedWrites('A')
+  assert.equal(cleared,2)
+  assert.ok((await q.getQueuedWrites()).every(row=>!row.lastError))
+  const sent=[]
+  await q.flushOfflineQueue(async row=>{sent.push(row.id)})
+  assert.deepEqual(sent.sort(),[a.id,b.id].sort());assert.equal(await q.getQueueCount(),0)
 })
 test('timeout/unknown outcome preserves every operation for retry',async()=>{
   const q=queue();q.setQueueOwner('A');await q.enqueueWrite(item());await q.enqueueWrite(item())
