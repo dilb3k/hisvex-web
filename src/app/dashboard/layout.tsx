@@ -35,6 +35,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (isLoading || !isAuthenticated || !user) return
     const isAdminOnlyRoute = pathname === '/dashboard' || ADMIN_ONLY_PATHS.some((p) => pathname.startsWith(p))
     const isSuperAdminOnlyRoute = SUPERADMIN_ONLY_PATHS.some((p) => pathname.startsWith(p))
+    if (user.scope === 'procurement') {
+      if (!['/dashboard/products','/dashboard/procurements'].includes(pathname)) router.replace('/dashboard/procurements')
+      return
+    }
     if (user.role === 'superAdmin' && isAdminOnlyRoute) {
       router.replace('/dashboard/users')
     } else if (user.role !== 'superAdmin' && isSuperAdminOnlyRoute) {
@@ -51,6 +55,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Mirrors the redirect effect above so the mismatched page's content never
   // flashes on screen for the one render before the effect fires.
+  if (user?.scope === 'procurement') {
+    if (!['/dashboard/products','/dashboard/procurements'].includes(pathname)) return null
+    return <AppLayout>{children}</AppLayout>
+  }
   if (user) {
     const isAdminOnlyRoute = pathname === '/dashboard' || ADMIN_ONLY_PATHS.some((p) => pathname.startsWith(p))
     const isSuperAdminOnlyRoute = SUPERADMIN_ONLY_PATHS.some((p) => pathname.startsWith(p))

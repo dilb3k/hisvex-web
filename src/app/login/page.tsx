@@ -43,6 +43,7 @@ const labelStyle: React.CSSProperties = {
 
 export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [procurementMode, setProcurementMode] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -73,8 +74,8 @@ export default function LoginPage() {
   const router = useRouter()
   const isLoginMode = mode === 'login'
 
-  const goHome = (user: { role?: string }) => {
-    router.replace(user.role === 'superAdmin' ? '/dashboard/users' : '/dashboard')
+  const goHome = (user: { role?: string; scope?: string }) => {
+    router.replace(user.scope === 'procurement' ? '/dashboard/procurements' : user.role === 'superAdmin' ? '/dashboard/users' : '/dashboard')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,7 +103,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       if (isLoginMode) {
-        const { data } = await authApi.login(username.trim(), password)
+        const { data } = await (procurementMode ? authApi.loginProcurement : authApi.login)(username.trim(), password)
         if (data && 'requiresVerification' in data) {
           setOtpChallengeId(data.sessionChallengeId)
           setOtpCode('')
@@ -119,7 +120,7 @@ export default function LoginPage() {
         // — a third AuthResponse variant can be added later without this
         // silently mis-narrowing again.
         if (!data || !('token' in data)) return
-        setAuth(data.token, data.refreshToken, data.user)
+        setAuth(data.token, data.refreshToken ?? '', data.user)
         goHome(data.user)
       } else {
         const { data } = await authApi.register(
@@ -128,7 +129,7 @@ export default function LoginPage() {
           phoneNumber.replace(/\D/g, '') || undefined,
           Number(businessDayStartHour.trim()),
         )
-        setAuth(data.token, data.refreshToken, data.user)
+        setAuth(data.token, data.refreshToken ?? '', data.user)
         goHome(data.user)
       }
     } catch (err: unknown) {
@@ -149,9 +150,11 @@ export default function LoginPage() {
     setError('')
     try {
       const { data } = await authApi.loginWithPhone(username.trim(), password, digits)
+      if ('requiresVerification' in data) { setOtpChallengeId(data.sessionChallengeId); setOtpCode(''); setOtpSecondsLeft(OTP_TTL_SECONDS); setOtpStep(true); setPhoneVerifyStep(false); return }
+      if ('needsPhoneVerification' in data) { setMaskedPhone(data.maskedPhone); return }
       setPhoneVerifyStep(false)
       setError(t('sessionTakenOver'))
-      setAuth(data.token, data.refreshToken, data.user)
+      setAuth(data.token, data.refreshToken ?? '', data.user)
       goHome(data.user)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('phoneRequired')
@@ -197,7 +200,7 @@ export default function LoginPage() {
       const { data } = await authApi.verifySessionChallenge(otpChallengeId, otpCode)
       setOtpStep(false)
       setError(t('sessionTakenOver'))
-      setAuth(data.token, data.refreshToken, data.user)
+      setAuth(data.token, data.refreshToken ?? '', data.user)
       goHome(data.user)
     } catch (err: unknown) {
       // The backend's own message already carries the useful detail here
@@ -567,6 +570,7 @@ export default function LoginPage() {
               </div>
 
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {isLoginMode && <label style={labelStyle}><input type="checkbox" checked={procurementMode} onChange={e => setProcurementMode(e.target.checked)} disabled={loading}/> Bozorchi rejimi (Mahsulotlar va Kirimlar)</label>}
                 {error && (
                   <div style={{
                     borderRadius: 10, padding: 12,

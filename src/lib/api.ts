@@ -2,6 +2,7 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
+import { createManualMutationRegistry, isDurableManualMutation, isDefinitiveMutationRejection, type ManualIntent } from './manualMutationIntent'
 import type { AuthResponse, AuthSuccess, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
 import { getBusinessDate } from './businessDay'
 import { enqueueWrite, flushOfflineQueue, setQueueOwner, getQueueOwner, removeQueuedWrite, markQueuedWriteForReview } from './offlineQueue'
@@ -72,16 +73,18 @@ function isOfflineQueuable(config: InternalAxiosRequestConfig): boolean {
 
 function sessionIdentity(token: string | null): string {
   if (!token) return ''
-  try { const p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return `${p.userId}:${p.sessionId??''}` } catch { return token }
+  try { const p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return `${p.userId}:${p.sessionId??''}:${p.scope??'full'}:${p.securityVersion??0}` } catch { return token }
 }
 let authEpoch=0
 let apiToken: string | null = null
+let procurementScope = false
 let apiRefreshToken: string | null = null
 let unauthorizedHandler: (() => void) | null = null
 
 export function setApiToken(token: string | null) {
   if(sessionIdentity(token)!==sessionIdentity(apiToken)) {authEpoch++;refreshPromise=null}
   apiToken = token
+  try { procurementScope = token ? JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).scope === 'procurement' : false } catch { procurementScope = false }
   let owner: string | null = null
   try { owner = token ? JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).userId ?? null : null } catch {}
   setQueueOwner(owner)
@@ -126,6 +129,19 @@ const api = axios.create({
 
 const MAX_RETRIES = 2
 
+function manualRegistry(owner: string, epoch: number) {
+  const assert = () => { if (owner !== getQueueOwner() || epoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi') }
+  const key = (slot: string) => `hisvex-manual-v1:${owner}:${procurementScope ? 'procurement' : 'full'}:${slot}`
+  return createManualMutationRegistry({
+    read: async slot => { const raw = localStorage.getItem(key(slot)); return raw ? JSON.parse(raw) as ManualIntent : null },
+    write: async (slot, value) => { assert(); if (value) localStorage.setItem(key(slot), JSON.stringify(value)); else localStorage.removeItem(key(slot)) },
+    lock: async (slot, work) => {
+      if (typeof navigator === 'undefined' || !navigator.locks) throw Error('Brauzer xavfsiz amal saqlovini qo‘llamaydi')
+      return await navigator.locks.request(key(slot), work)
+    },
+  }, () => crypto.randomUUID(), async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), n => n.toString(16).padStart(2, '0')).join(''), assert)
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -160,6 +176,15 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   if (getQueueOwner()) config.headers['X-Account-ID'] = getQueueOwner()
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) config.headers.delete('Content-Type')
   config.headers['X-Client-Protocol']='2'
+  if (!config.headers['Idempotency-Key'] && isDurableManualMutation(config.method, config.url)) {
+    const owner = getQueueOwner()
+    if (!owner) throw Error('Avval hisobga kiring')
+    const registry = manualRegistry(owner, authEpoch)
+    const slot = `${config.method}:${config.url}`
+    const intent = await registry.claim(slot, { body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data, params: config.params })
+    config.headers['Idempotency-Key'] = intent.id
+    ;(config as any)._manualIntent = { registry, slot, id: intent.id }
+  }
   if(!['get','head','options'].includes(config.method??'get')) config.headers['Idempotency-Key'] ??= crypto.randomUUID()
   if (apiToken) {
     config.headers.Authorization = `Bearer ${apiToken}`
@@ -272,6 +297,8 @@ api.interceptors.response.use(
   async (response) => {
     if ((response.config as any)._authEpoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
     if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error('Hisob o‘zgardi')
+    const manual = (response.config as any)._manualIntent
+    if (manual && response.status !== 202 && response.data?.success !== false) await manual.registry.acknowledge(manual.slot, manual.id)
     if (isOfflineQueuable(response.config) && !(response.config as any)._queueReplay) {
       await removeQueuedWrite(String(response.config.headers['Idempotency-Key']), String(response.config.headers['X-Account-ID']))
     }
@@ -297,7 +324,7 @@ api.interceptors.response.use(
       // earlier both-down stretch instead of waiting for this tab to
       // reload. flushOfflineQueue no-ops cheaply when the queue is empty or
       // already flushing, so this is safe to fire on every mutation.
-      void flushOfflineQueue((item) =>
+      if (!procurementScope) void flushOfflineQueue((item) =>
         api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any).then(() => undefined),
       ).catch(() => {})
     }
@@ -307,8 +334,10 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     if (originalRequest && (originalRequest as any)._authEpoch !== authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
     if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getQueueOwner()) return Promise.reject(new Error('Hisob o‘zgardi'))
+    const manual = (originalRequest as any)?._manualIntent
+    if (manual && isDefinitiveMutationRejection(error.response?.status, error.response?.data)) await manual.registry.acknowledge(manual.slot, manual.id)
     const url = originalRequest?.url ?? ''
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
+    const isAuthEndpoint = url.includes('/auth/verify-session-challenge') || url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
     // The proxy (src/app/api/[...path]/route.ts) already tried primary then
     // backup server-side before this response ever reached the browser — no
@@ -400,8 +429,9 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  loginProcurement: (username: string, password: string) => api.post<AuthSuccess>('/auth/login/procurement', { username, password }),
   login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
-  loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
+  loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthResponse>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
   // Completes the AuthOtpChallenge path login() can now return — see
   // types.ts. Same success shape as a normal login (token/refreshToken/user).
   verifySessionChallenge: (sessionChallengeId: string, otpCode: string) =>
@@ -560,9 +590,23 @@ export function resolveImageUrl(imageUrl?: string | null, image?: string, imageH
 // the opportunistic flush in the response interceptor's success handler
 // above only covers a recovery that happens while this tab is already open.
 export function flushOfflineQueueOnStartup() {
+  if (procurementScope) return
   void flushOfflineQueue((item) =>
     api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any).then(() => undefined),
   ).catch(() => {})
+}
+
+
+export const procurementApi = {
+  products: async () => {
+    const { data } = await api.get<Product[]>('/products')
+    return data.map(p => ({id:p.localId ?? p._id,name:p.name,unit:(p.unit ?? 'dona') as 'dona'|'kg',quantity:p.quantity ?? 0,buyPrice:p.buyPrice ?? 0}))
+  },
+  list: async () => (await api.get<{localId:string;date:string;totalCost:number}[]>('/procurements')).data,
+  submit: async (id: string, items: import('./procurementIntent').ProcurementItem[]) => {
+    const { data } = await api.post<{procurement:{localId:string}}>('/procurements', {items}, {headers:{'Idempotency-Key':id}})
+    return data.procurement
+  },
 }
 
 export default api

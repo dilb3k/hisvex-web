@@ -38,6 +38,7 @@ function isFailoverTriggeringStatus(status: number): boolean {
 const RAILWAY_NOT_FOUND_BODY_MARKER = 'Application not found'
 async function readAndCheckPlatformNotFound(res: Response): Promise<{ matched: boolean; body: ArrayBuffer }> {
   const body = await res.arrayBuffer()
+  try { const appBody = JSON.parse(new TextDecoder().decode(body)); if (typeof appBody?.success === 'boolean') return { matched: false, body } } catch {}
   if (res.headers.has('x-railway-router')) return { matched: true, body }
   // A real marker always appears well within the first few hundred bytes of
   // Railway's static error page — capped so a large JSON 404 body from the
@@ -133,7 +134,7 @@ async function fetchWithFailover(
   if (!skipPrimary) {
     const res = await attemptOnce(`${PRIMARY_URL}${path}`, method, headers, body, timeoutMs)
 
-    if (res && res.status === 404 && replaySafe) {
+    if (res && res.status === 404) {
       const { matched, body: bodyBuf } = await readAndCheckPlatformNotFound(res)
       if (!matched) {
         // A real, normal 404 from the app itself — return it exactly as
@@ -145,10 +146,12 @@ async function fetchWithFailover(
       }
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
       reportFailoverEvent(headers.get('authorization'))
+      if (!replaySafe) return { res: new Response(bodyBuf, { status: res.status, statusText: res.statusText, headers: res.headers }), usedBackup: false }
     } else if (res && !isFailoverTriggeringStatus(res.status)) {
       primaryDownUntil = 0
       return { res, usedBackup: false }
     } else {
+      primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
       if (!replaySafe) return { res, usedBackup: false }
       if (res?.body) await res.body.cancel().catch(() => {})
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS

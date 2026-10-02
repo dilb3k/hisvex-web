@@ -29,6 +29,7 @@ const sidebarNavSections: NavSection[] = [
     labelKey: 'navSectionOperations',
     items: [
       { to: '/dashboard/products', icon: Package, labelKey: 'products', roles: ['admin'] },
+      { to: '/dashboard/procurements', icon: ClipboardList, labelKey: 'procurements' as const, roles: ['admin'] },
       { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory', roles: ['admin'] },
       { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales', roles: ['admin'] },
       { to: '/dashboard/debtors', icon: Users, labelKey: 'debtors', roles: ['admin'] },
@@ -46,7 +47,8 @@ const sidebarNavItems: NavItem[] = sidebarNavSections.flatMap((s) => s.items)
 
 const mobileTabItems = [
   { to: '/dashboard/products', icon: Package, labelKey: 'products' as const, roles: ['admin'] },
-  { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['admin'] },
+  { to: '/dashboard/procurements', icon: ClipboardList, labelKey: 'procurements' as const, roles: ['admin'] },
+      { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['admin'] },
   { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['admin'] },
   { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['admin'] },
   { to: '/dashboard/users', icon: Users, labelKey: 'users' as const, roles: ['superAdmin'] },
@@ -72,12 +74,13 @@ export function Sidebar() {
   const router = useRouter()
 
   const visibleSections = sidebarNavSections
-    .map(section => ({ ...section, items: section.items.filter(item => item.roles.includes(user?.role || '')) }))
+    .map(section => ({ ...section, items: section.items.filter(item => (user?.scope === 'procurement' ? ['/dashboard/products','/dashboard/procurements'].includes(item.to) : item.roles.includes(user?.role || ''))) }))
     .filter(section => section.items.length > 0)
-  const visibleTabs = mobileTabItems.filter(item => item.roles.includes(user?.role || ''))
+  const visibleTabs = mobileTabItems.filter(item => (user?.scope === 'procurement' ? ['/dashboard/products','/dashboard/procurements'].includes(item.to) : item.roles.includes(user?.role || '')))
   const active = (to: string) => to === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(to)
 
   const handleRefresh = async () => {
+    if (user?.scope === 'procurement') { window.dispatchEvent(new Event('hisvex-procurement-refresh')); return }
     setRefreshing(true)
     try { await refreshAll() } finally { setRefreshing(false) }
   }

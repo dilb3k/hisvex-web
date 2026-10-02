@@ -1,4 +1,5 @@
 'use client'
+import { ProcurementScreen } from '@/components/ProcurementScreen'
 import { assertNoPendingProductWrites } from '@/lib/offlineQueue'
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
@@ -130,6 +131,11 @@ function ProductsSkeleton() {
 }
 
 export default function ProductsPage() {
+  const scoped = useAuthStore(s => s.user?.scope === 'procurement')
+  return scoped ? <ProcurementScreen catalogOnly /> : <FullProductsPage />
+}
+
+function FullProductsPage() {
   const router = useRouter()
   const products = useAppStore((s) => s.products)
   const refreshAll = useAppStore((s) => s.refreshAll)

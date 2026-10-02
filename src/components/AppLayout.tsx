@@ -10,13 +10,14 @@ import { X, AlertTriangle, CheckCircle, Info, WifiOff, RotateCw } from 'lucide-r
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { error, clearError, toast, hideToast, showToast } = useAppStore()
+  const scoped = useAuthStore(s => s.user?.scope === 'procurement')
   const isOffline = useAuthStore((s) => s.isOffline)
   const [queuedCount, setQueuedCount] = useState(0)
   const [retrying, setRetrying] = useState(false)
 
   const handleRetryNow = async () => {
     const owner = getQueueOwner()
-    if (!owner || retrying) return
+    if (!owner || retrying || scoped) return
     setRetrying(true)
     try {
       // Items that were previously rejected and parked (e.g. a route that
@@ -51,7 +52,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const showOfflineBanner = isOffline || queuedCount > 0
+  const showOfflineBanner = !scoped && (isOffline || queuedCount > 0)
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

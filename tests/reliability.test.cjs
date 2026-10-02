@@ -107,6 +107,10 @@ test('an ordinary business 404 is returned as-is and never retried on backup',as
   const result=await request(p,'GET');assert.equal(result.status,404);assert.equal(p.calls.length,1)
   assert.equal((await result.json()).error.message,'Mahsulot topilmadi')
 })
+test('a business envelope containing the platform marker and router header is never failed over',async()=>{
+ const p=proxy([new Response(JSON.stringify({success:false,error:{message:'Application not found'}}),{status:404,headers:{'x-railway-router':'edge'}})]);
+ const res=await request(p,'GET');assert.equal(res.status,404);assert.equal(p.calls.length,1);assert.equal((await res.json()).success,false);
+});
 test('a Railway platform 404 (router header) fails over to backup exactly once',async()=>{
   const p=proxy([new Response('not found',{status:404,headers:{'x-railway-router':'edge'}}),new Response('ok')])
   const result=await request(p,'GET');assert.equal(result.status,200);assert.equal(p.calls.length,2)
@@ -115,9 +119,14 @@ test('a Railway platform 404 (Application not found body) fails over to backup e
   const p=proxy([new Response('Application not found',{status:404}),new Response('ok')])
   const result=await request(p,'GET');assert.equal(result.status,200);assert.equal(p.calls.length,2)
 })
-test('a 404 on a write request is never inspected for platform-failover and never replayed',async()=>{
+test('a 404 on a write request preserves its original outcome without automatic replay',async()=>{
   const p=proxy([new Response('Application not found',{status:404})])
   const result=await request(p,'POST');assert.equal(result.status,404);assert.equal(p.calls.length,1)
+})
+test('platform write failure is not replayed; the next explicitly submitted request uses Render',async()=>{
+ const p=proxy([new Response('Application not found',{status:404}),new Response('{"success":true,"data":{}}')]);
+ assert.equal((await request(p,'POST',['procurements'])).status,404);assert.equal(p.calls.length,1);
+ assert.equal((await request(p,'POST',['procurements'])).status,200);assert.equal(p.calls.length,2);assert.match(p.calls[1].url,/backup\.test/);
 })
 
 
@@ -137,18 +146,39 @@ test('an aborted IndexedDB transaction never reports a durable acknowledgement',
 })
 
 const apiSource=transpile('src/lib/api.ts')
-function apiHarness() {
+function apiHarness(storage = new Map()) {
   const axios=require('axios');let owner=null;const saved=[];const removed=[];let now=0
   class TestDate extends Date {static now(){return now}}
   const queue={setQueueOwner:value=>owner=value,getQueueOwner:()=>owner,enqueueWrite:async item=>saved.push(structuredClone(item)),removeQueuedWrite:async(id,account)=>removed.push({id,account}),markQueuedWriteForReview:async(id,message,account)=>saved.push({review:id,message,account}),flushOfflineQueue:async()=>{}}
-  const context={exports:{},require:name=>{if(name==='axios')return axios;if(name==='./offlineQueue')return queue;if(name==='./businessDay')return {getBusinessDate:()=> '2026-09-30'};throw Error(name)},
-    crypto:webcrypto,FormData,Date:TestDate,atob,console,localStorage:{setItem(){},removeItem(){}},window:{location:{href:''}},setTimeout,clearTimeout,
+  const manual={exports:{}};vm.runInNewContext(transpile('src/lib/manualMutationIntent.ts'),manual)
+  let lock=Promise.resolve();
+  const context={exports:{},require:name=>{if(name==='axios')return axios;if(name==='./manualMutationIntent')return manual.exports;if(name==='./offlineQueue')return queue;if(name==='./businessDay')return {getBusinessDate:()=> '2026-09-30'};throw Error(name)},
+    crypto:webcrypto,TextEncoder,FormData,Date:TestDate,atob,console,localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},navigator:{locks:{request:(_key,work)=>{const run=lock.then(work);lock=run.catch(()=>{});return run}}},window:{location:{href:''}},setTimeout,clearTimeout,
   }
   vm.runInNewContext(apiSource,context)
   const setOwner=id=>context.exports.setApiToken(`header.${Buffer.from(JSON.stringify({userId:id})).toString('base64url')}.signature`)
   setOwner('A')
-  return {api:context.exports.default,exports:context.exports,saved,removed,setOwner,getOwner:()=>owner,setTime:value=>now=value,axios}
+  return {api:context.exports.default,exports:context.exports,saved,removed,storage,setOwner,getOwner:()=>owner,setTime:value=>now=value,axios}
 }
+
+test('manual debtor retry survives restart with the same ID and a known success permits the next operation',async()=>{
+  const first=apiHarness();let original;
+  first.api.defaults.adapter=async config=>{original=config.headers['Idempotency-Key'];throw new first.axios.AxiosError('response lost','ECONNABORTED',config)}
+  await assert.rejects(first.api.post('/debtors/d/adjust',{amount:20,type:'add'}));
+  assert.equal(first.storage.size,1);
+  const restart=apiHarness(first.storage);const ids=[];
+  restart.api.defaults.adapter=async config=>{ids.push(config.headers['Idempotency-Key']);return {data:{success:true,data:{amount:20}},status:200,headers:{},config}}
+  await restart.api.post('/debtors/d/adjust',{type:'add',amount:20});assert.equal(ids[0],original);assert.equal(first.storage.size,0);
+  await restart.api.post('/debtors/d/adjust',{type:'add',amount:20});assert.notEqual(ids[1],original);
+});
+test('unknown manual operation blocks changed payload before network and is isolated from another account',async()=>{
+  const h=apiHarness();let calls=0;
+  h.api.defaults.adapter=async config=>{calls++;throw new h.axios.AxiosError('unknown','ECONNABORTED',config)};
+  await assert.rejects(h.api.post('/products',{name:'first'}));
+  await assert.rejects(h.api.post('/products',{name:'changed'}),/oldingi/);assert.equal(calls,1);
+  h.setOwner('B');h.api.defaults.adapter=async config=>{calls++;return {data:{success:true,data:{}},status:200,headers:{},config}};
+  await h.api.post('/products',{name:'changed'});assert.equal(calls,2);assert.equal(h.storage.size,1,'owner A intent remains');
+});
 const response=(config,data={value:1})=>({config,data,status:200,statusText:'OK',headers:{}})
 test('Axios zero timeout receives a finite default; multipart stays FormData',async()=>{
   const h=apiHarness();let request
