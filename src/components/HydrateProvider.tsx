@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useSyncExternalStore } from 'react'
 import { useAuthStore } from '@/lib/authStore'
-import { setUnauthorizedHandler, setTokensRefreshedHandler } from '@/lib/api'
+import { setUnauthorizedHandler, setTokensRefreshedHandler, setBackendReachableHandler } from '@/lib/api'
 import { getLanguage, getServerLanguage, subscribeLanguage } from '@/lib/i18n'
 import { initBusinessDay } from '@/lib/businessDay'
 import { AppSplash } from '@/components/AppSplash'
@@ -38,9 +38,13 @@ export function HydrateProvider({ children }: { children: React.ReactNode }) {
     setTokensRefreshedHandler((token, refreshToken) => {
       useAuthStore.setState({ token, refreshToken })
     })
+    setBackendReachableHandler(() => {
+      if (useAuthStore.getState().isOffline) useAuthStore.setState({ isOffline: false })
+    })
     return () => {
       setUnauthorizedHandler(null)
       setTokensRefreshedHandler(null)
+      setBackendReachableHandler(null)
     }
   }, [logout])
 

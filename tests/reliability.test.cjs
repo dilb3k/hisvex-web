@@ -146,19 +146,19 @@ test('an aborted IndexedDB transaction never reports a durable acknowledgement',
 })
 
 const apiSource=transpile('src/lib/api.ts')
-function apiHarness(storage = new Map()) {
+function apiHarness(storage = new Map(), queueOverride) {
   const axios=require('axios');let owner=null;const saved=[];const removed=[];let now=0
   class TestDate extends Date {static now(){return now}}
-  const queue={setQueueOwner:value=>owner=value,getQueueOwner:()=>owner,enqueueWrite:async item=>saved.push(structuredClone(item)),removeQueuedWrite:async(id,account)=>removed.push({id,account}),markQueuedWriteForReview:async(id,message,account)=>saved.push({review:id,message,account}),flushOfflineQueue:async()=>{}}
+  const offlineQueue={setQueueOwner:value=>owner=value,getQueueOwner:()=>owner,enqueueWrite:async item=>saved.push(structuredClone(item)),removeQueuedWrite:async(id,account)=>removed.push({id,account}),markQueuedWriteForReview:async(id,message,account)=>saved.push({review:id,message,account}),flushOfflineQueue:async()=>{},isTransientQueueFailure:queue().isTransientQueueFailure,...queueOverride}
   const manual={exports:{}};vm.runInNewContext(transpile('src/lib/manualMutationIntent.ts'),manual)
   let lock=Promise.resolve();
-  const context={exports:{},require:name=>{if(name==='axios')return axios;if(name==='./manualMutationIntent')return manual.exports;if(name==='./offlineQueue')return queue;if(name==='./businessDay')return {getBusinessDate:()=> '2026-09-30'};throw Error(name)},
+  const context={exports:{},require:name=>{if(name==='axios')return axios;if(name==='./manualMutationIntent')return manual.exports;if(name==='./offlineQueue')return offlineQueue;if(name==='./businessDay')return {getBusinessDate:()=> '2026-09-30'};throw Error(name)},
     crypto:webcrypto,TextEncoder,FormData,Date:TestDate,atob,console,localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},navigator:{locks:{request:(_key,work)=>{const run=lock.then(work);lock=run.catch(()=>{});return run}}},window:{location:{href:''}},setTimeout,clearTimeout,
   }
   vm.runInNewContext(apiSource,context)
   const setOwner=id=>context.exports.setApiToken(`header.${Buffer.from(JSON.stringify({userId:id})).toString('base64url')}.signature`)
   setOwner('A')
-  return {api:context.exports.default,exports:context.exports,saved,removed,storage,setOwner,getOwner:()=>owner,setTime:value=>now=value,axios}
+  return {api:context.exports.default,exports:context.exports,saved,removed,storage,setOwner,getOwner:offlineQueue.getQueueOwner,setTime:value=>now=value,axios}
 }
 
 test('manual debtor retry survives restart with the same ID and a known success permits the next operation',async()=>{
@@ -221,7 +221,7 @@ test('permanent rejection is parked across reloads and never auto-executes later
   assert.equal(await restarted.getQueueCount(),1);assert.equal((await restarted.getQueuedWrites())[0].lastError,'stale stock')
 })
 test('initial business rejection returns pending-review acknowledgement so the cart is not submitted as a second sale',async()=>{
-  const h=apiHarness();const result=await h.api.post('/inventory/operations',{id:'stable-id',kind:'sale',lines:[]},{adapter:async config=>{throw new h.axios.AxiosError('conflict','ERR_BAD_REQUEST',config,{}, {...response(config,{error:{message:'stock changed'}}),status:409})}})
+  const h=apiHarness();const result=await h.api.post('/inventory/operations',{id:'stable-id',kind:'sale',lines:[]},{adapter:async config=>{throw new h.axios.AxiosError('conflict','ERR_BAD_REQUEST',config,{}, {...response(config,{success:false,error:{message:'stock changed'}}),status:409})}})
   assert.equal(result.status,202);assert.equal(result.data.needsReview,true)
   assert.equal(h.saved[1].review,'stable-id');assert.equal(h.removed.length,0)
 })
@@ -245,4 +245,83 @@ test('patched ExcelJS produces a readable workbook and patched Sharp loads',asyn
   const bytes=await workbook.xlsx.writeBuffer();const loaded=new ExcelJS.Workbook();await loaded.xlsx.load(bytes)
   assert.equal(loaded.worksheets[0].getCell('C1').value,25000)
   const sharp=require('sharp');const image=await sharp({create:{width:1,height:1,channels:4,background:'#ffffff'}}).png().toBuffer();assert.ok(image.length>0)
+})
+
+test('in-progress operations and unrecognized platform responses stay retryable instead of being parked',async()=>{
+  for (const failure of [{status:409,code:'OPERATION_IN_PROGRESS'}, {status:404,requiresReview:false}]) {
+    const q=queue();q.setQueueOwner('A');const sale=item();await q.enqueueWrite(sale)
+    await q.flushOfflineQueue(async()=>{throw Object.assign(Error('temporarily pending'),failure)})
+    assert.equal(await q.getQueueCount(),1)
+    assert.equal((await q.getQueuedWrites())[0].lastError,undefined)
+    await q.flushOfflineQueue(async row=>assert.equal(row.id,sale.id))
+    assert.equal(await q.getQueueCount(),0)
+  }
+})
+
+test('concurrent flush callers wait for the same acknowledgement without sending twice',async()=>{
+  const q=queue();q.setQueueOwner('A');await q.enqueueWrite(item())
+  let complete,started,sends=0
+  const beginning=new Promise(resolve=>started=resolve)
+  const first=q.flushOfflineQueue(()=>{sends++;started();return new Promise(resolve=>complete=resolve)})
+  await beginning
+  const second=q.flushOfflineQueue(async()=>{sends++})
+  assert.equal(first,second)
+  let finished=false;second.then(()=>finished=true)
+  await Promise.resolve();assert.equal(finished,false)
+  complete();await second
+  assert.equal(sends,1);assert.equal(await q.getQueueCount(),0)
+})
+
+test('initial transient responses keep the sale queued without manual-review quarantine',async()=>{
+  for (const [status,body] of [[409,{success:false,error:{code:'OPERATION_IN_PROGRESS',message:'pending'}}], [404,{success:false,error:{code:'ROUTE_NOT_FOUND',message:'deploying'}}], [404,'Application not found']]) {
+    const h=apiHarness()
+    const result=await h.api.post('/inventory/operations',{id:'same-intent',kind:'sale',lines:[]},{adapter:async config=>{throw new h.axios.AxiosError('temporary','ERR_BAD_REQUEST',config,{}, {...response(config,body),status})}})
+    assert.equal(result.status,202);assert.equal(result.data.needsReview,false)
+    assert.equal(h.saved.length,1);assert.equal(h.removed.length,0)
+  }
+})
+
+test('only a fresh protected response clears offline status and drains a recovered queue with the original ID',async()=>{
+  const q=queue(),h=apiHarness(new Map(),q),ids=[]
+  let reachable=0;h.exports.setBackendReachableHandler(()=>reachable++)
+  h.api.defaults.adapter=async config=>response(config,{success:true,data:[]})
+  await h.api.get('/products');assert.equal(reachable,1)
+  h.api.defaults.adapter=async config=>{ids.push(config.headers['Idempotency-Key']);throw new h.axios.AxiosError('offline','ERR_NETWORK',config)}
+  const pending=await h.api.post('/inventory/operations',{id:'original-sale',kind:'sale',lines:[]})
+  assert.equal(pending.status,202);assert.equal(await q.getQueueCount(),1)
+  await h.api.get('/products') // Cached data must not pretend we have reconnected.
+  assert.equal(reachable,1);assert.equal(await q.getQueueCount(),1)
+  h.api.defaults.adapter=async config=>{if(config.method==='post')ids.push(config.headers['Idempotency-Key']);return response(config,{success:true,data:{operationId:'original-sale'}})}
+  await h.api.get('/fresh-recovery')
+  await h.exports.flushOfflineQueueOnStartup()
+  assert.equal(await q.getQueueCount(),0);assert.deepEqual(ids,['original-sale','original-sale'])
+  assert.ok(reachable>=2)
+})
+
+test('HTTP 202 is pending, never a durable acknowledgement, including during replay',async()=>{
+  const q=queue(),h=apiHarness(new Map(),q)
+  h.api.defaults.adapter=async config=>({...response(config,{success:true,data:{queued:true}}),status:202})
+  const result=await h.api.post('/inventory/operations',{id:'still-pending',kind:'sale',lines:[]})
+  assert.equal(result.status,202);assert.equal(await q.getQueueCount(),1)
+  await h.exports.flushOfflineQueueOnStartup()
+  assert.equal(await q.getQueueCount(),1);assert.equal((await q.getQueuedWrites())[0].lastError,undefined)
+})
+
+test('real business rejection remains visible for review and is not auto-replayed on reconnection',async()=>{
+  const q=queue(),h=apiHarness(new Map(),q);let writes=0
+  h.api.defaults.adapter=async config=>{writes++;throw new h.axios.AxiosError('stock changed','ERR_BAD_REQUEST',config,{}, {...response(config,{success:false,error:{message:'stock changed',code:'RECONCILIATION_REQUIRED'}}),status:409})}
+  const result=await h.api.post('/inventory/operations',{id:'reconcile-me',kind:'sale',lines:[]})
+  assert.equal(result.data.needsReview,true)
+  await h.exports.flushOfflineQueueOnStartup()
+  assert.equal(writes,1);assert.equal(await q.getQueueCount(),1)
+  assert.equal((await q.getQueuedWrites())[0].lastError,'stock changed')
+})
+
+test('an old-account success cannot clear the current account offline state',async()=>{
+  const h=apiHarness();let reachable=0,complete,started
+  h.exports.setBackendReachableHandler(()=>reachable++)
+  const beginning=new Promise(resolve=>started=resolve)
+  const old=h.api.get('/pending-old-account',{adapter:config=>new Promise(resolve=>{complete=()=>resolve(response(config));started()})})
+  await beginning;h.setOwner('B');complete()
+  await assert.rejects(old,/Hisob|Sessiya/);assert.equal(reachable,0)
 })

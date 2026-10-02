@@ -5,7 +5,7 @@ import rawAxios from 'axios'
 import { createManualMutationRegistry, isDurableManualMutation, isDefinitiveMutationRejection, type ManualIntent } from './manualMutationIntent'
 import type { AuthResponse, AuthSuccess, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
 import { getBusinessDate } from './businessDay'
-import { enqueueWrite, flushOfflineQueue, setQueueOwner, getQueueOwner, removeQueuedWrite, markQueuedWriteForReview } from './offlineQueue'
+import { enqueueWrite, flushOfflineQueue, setQueueOwner, getQueueOwner, removeQueuedWrite, markQueuedWriteForReview, isTransientQueueFailure } from './offlineQueue'
 
 interface InventoryResponse {
   items: InventoryItem[]
@@ -80,9 +80,11 @@ let apiToken: string | null = null
 let procurementScope = false
 let apiRefreshToken: string | null = null
 let unauthorizedHandler: (() => void) | null = null
+let backendReachableHandler: (() => void) | null = null
+let backendWasUnavailable = false
 
 export function setApiToken(token: string | null) {
-  if(sessionIdentity(token)!==sessionIdentity(apiToken)) {authEpoch++;refreshPromise=null}
+  if(sessionIdentity(token)!==sessionIdentity(apiToken)) {authEpoch++;refreshPromise=null;backendWasUnavailable=false}
   apiToken = token
   try { procurementScope = token ? JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).scope === 'procurement' : false } catch { procurementScope = false }
   let owner: string | null = null
@@ -97,6 +99,18 @@ export function setRefreshToken(token: string | null) {
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler
+}
+
+export function setBackendReachableHandler(handler: (() => void) | null) {
+  backendReachableHandler = handler
+}
+
+type ApiErrorBody = { success?: boolean; error?: { message?: string; details?: unknown; code?: string }; message?: string }
+function queuedWriteNeedsReview(error: AxiosError<ApiErrorBody>): boolean {
+  const status = error.response?.status
+  const body = error.response?.data
+  return !!status && [400, 403, 404, 409, 422].includes(status) && body?.success === false
+    && !isTransientQueueFailure(status, body.error?.code)
 }
 
 let tokensRefreshedHandler: ((token: string, refreshToken: string) => void) | null = null
@@ -297,9 +311,17 @@ api.interceptors.response.use(
   async (response) => {
     if ((response.config as any)._authEpoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
     if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error('Hisob o‘zgardi')
+    // Only a real protected response confirms a cached offline session. A
+    // local GET cache hit, public login response, or stale preview does not.
+    const confirmsSession = response.status >= 200 && response.status < 300 && response.data?.success !== false
+      && !response.headers['x-local-cache'] && apiToken && response.config.headers.Authorization === `Bearer ${apiToken}`
+      && !/^\/auth\/(?:login|register|refresh|logout|verify)/.test(response.config.url ?? '')
+      && response.config.url !== '/inventory-preview'
+    const recovered = confirmsSession && backendWasUnavailable
+    if (confirmsSession) { backendWasUnavailable = false; backendReachableHandler?.() }
     const manual = (response.config as any)._manualIntent
     if (manual && response.status !== 202 && response.data?.success !== false) await manual.registry.acknowledge(manual.slot, manual.id)
-    if (isOfflineQueuable(response.config) && !(response.config as any)._queueReplay) {
+    if (isOfflineQueuable(response.config) && !(response.config as any)._queueReplay && response.status !== 202 && response.data?.success !== false) {
       await removeQueuedWrite(String(response.config.headers['Idempotency-Key']), String(response.config.headers['X-Account-ID']))
     }
     const body = response.data
@@ -324,16 +346,16 @@ api.interceptors.response.use(
       // earlier both-down stretch instead of waiting for this tab to
       // reload. flushOfflineQueue no-ops cheaply when the queue is empty or
       // already flushing, so this is safe to fire on every mutation.
-      if (!procurementScope) void flushOfflineQueue((item) =>
-        api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any).then(() => undefined),
-      ).catch(() => {})
+      if (!procurementScope && response.status !== 202) void flushOfflineQueueOnStartup().catch(() => {})
     }
+    if (recovered && response.config.method === 'get') void flushOfflineQueueOnStartup().catch(() => {})
     return response
   },
-  async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
+  async (error: AxiosError<ApiErrorBody>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
     if (originalRequest && (originalRequest as any)._authEpoch !== authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
     if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getQueueOwner()) return Promise.reject(new Error('Hisob o‘zgardi'))
+    if (originalRequest && (!error.response || error.response.status >= 500 || (error.response.status === 404 && error.response.data?.success !== false))) backendWasUnavailable = true
     const manual = (originalRequest as any)?._manualIntent
     if (manual && isDefinitiveMutationRejection(error.response?.status, error.response?.data)) await manual.registry.acknowledge(manual.slot, manual.id)
     const url = originalRequest?.url ?? ''
@@ -356,7 +378,7 @@ api.interceptors.response.use(
     ) {
       // Intent was persisted before dispatch. A failed response never
       // changes its ID or claims the server has committed it.
-      const needsReview=!!error.response && [400,403,404,409,422].includes(error.response.status)
+      const needsReview=queuedWriteNeedsReview(error)
       const message=error.response?.data?.error?.message ?? error.response?.data?.message ?? 'Server amalni rad etdi'
       if(needsReview) await markQueuedWriteForReview(String(originalRequest.headers['Idempotency-Key']),message,String(originalRequest.headers['X-Account-ID']))
       return { data: { queued: true, needsReview, message:needsReview?message:undefined }, status: 202, statusText: 'Queued; awaiting confirmation', headers: {}, config: originalRequest }
@@ -424,7 +446,8 @@ api.interceptors.response.use(
     } else {
       message = error.message || 'API xatoligi'
     }
-    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status, code }))
+    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status, code,
+      requiresReview: originalRequest && isOfflineQueuable(originalRequest) ? queuedWriteNeedsReview(error) : undefined }))
   },
 )
 
@@ -590,10 +613,13 @@ export function resolveImageUrl(imageUrl?: string | null, image?: string, imageH
 // the opportunistic flush in the response interceptor's success handler
 // above only covers a recovery that happens while this tab is already open.
 export function flushOfflineQueueOnStartup() {
-  if (procurementScope) return
-  void flushOfflineQueue((item) =>
-    api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any).then(() => undefined),
-  ).catch(() => {})
+  if (procurementScope) return Promise.resolve()
+  return flushOfflineQueue(async (item) => {
+    const response = await api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any)
+    if (response.status === 202 || response.data?.queued || response.data?.success === false) {
+      throw Object.assign(Error('Server tasdig‘i hali kelmadi'), { status: 409, code: 'OPERATION_IN_PROGRESS', requiresReview: false })
+    }
+  })
 }
 
 

@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sidebar } from './Sidebar'
+import { PendingOperations } from './PendingOperations'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
-import { subscribeOfflineQueueCount, retryAllReviewedWrites, getQueueOwner } from '@/lib/offlineQueue'
+import { subscribeOfflineQueueCount, retryAllReviewedWrites, getQueueOwner, getQueueCount } from '@/lib/offlineQueue'
 import { flushOfflineQueueOnStartup } from '@/lib/api'
 import { X, AlertTriangle, CheckCircle, Info, WifiOff, RotateCw } from 'lucide-react'
 
@@ -14,6 +15,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isOffline = useAuthStore((s) => s.isOffline)
   const [queuedCount, setQueuedCount] = useState(0)
   const [retrying, setRetrying] = useState(false)
+  const [browserOffline, setBrowserOffline] = useState(false)
+  const [pendingVisible, setPendingVisible] = useState(false)
+  const pendingSince = useRef<number | null>(null)
 
   const handleRetryNow = async () => {
     const owner = getQueueOwner()
@@ -24,8 +28,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       // briefly didn't exist during a deploy) are otherwise never retried
       // automatically again — this re-queues all of them for one more try.
       await retryAllReviewedWrites(owner)
-      flushOfflineQueueOnStartup()
-      showToast('Navbat qayta tekshirildi', 'info')
+      await flushOfflineQueueOnStartup()
+      const remaining = await getQueueCount()
+      if (owner !== getQueueOwner()) return
+      showToast(remaining === 0 ? 'Barcha yozuvlar tasdiqlandi' : `${remaining} ta yozuv hali tasdiqlanmadi`, remaining === 0 ? 'success' : 'info')
     } catch {
       showToast('Qayta urinib bo‘lmadi', 'error')
     } finally {
@@ -36,23 +42,42 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Replays anything left queued from a previous session (tab closed while
     // both backends were unreachable) as soon as this one starts.
-    flushOfflineQueueOnStartup()
+    const flush = () => { void flushOfflineQueueOnStartup().catch(() => {}) }
+    const online = () => { setBrowserOffline(false); flush() }
+    const offline = () => setBrowserOffline(true)
+    setBrowserOffline(!navigator.onLine)
+    flush()
     const unsubscribeCount = subscribeOfflineQueueCount(setQueuedCount)
     // Desktop (syncEngine.ts) and Mobile (useNetworkStatus.ts) both already
     // retry automatically on reconnect and on a periodic timer — the web
     // app only ever retried on initial mount, so a tab left open across an
     // outage never noticed the backend coming back until manually
     // refreshed. Mirrors the same two triggers here.
-    window.addEventListener('online', flushOfflineQueueOnStartup)
-    const interval = setInterval(flushOfflineQueueOnStartup, 60_000)
+    window.addEventListener('online', online)
+    window.addEventListener('offline', offline)
+    const interval = setInterval(flush, 60_000)
     return () => {
       unsubscribeCount()
-      window.removeEventListener('online', flushOfflineQueueOnStartup)
+      window.removeEventListener('online', online)
+      window.removeEventListener('offline', offline)
       clearInterval(interval)
     }
   }, [])
 
-  const showOfflineBanner = !scoped && (isOffline || queuedCount > 0)
+  useEffect(() => {
+    if (scoped || queuedCount === 0) {
+      pendingSince.current = null
+      setPendingVisible(false)
+      return
+    }
+    // Every online write is durable before dispatch. Don't flash a global
+    // warning during that normal request; retain a compact notice if it lasts.
+    pendingSince.current ??= Date.now()
+    const timeout = setTimeout(() => setPendingVisible(true), Math.max(0, 1500 - (Date.now() - pendingSince.current!)))
+    return () => clearTimeout(timeout)
+  }, [queuedCount, scoped])
+
+  const showOfflineBanner = !scoped && (isOffline || browserOffline)
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -99,6 +124,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </button>
               )}
             </div>
+          )}
+          {!scoped && queuedCount > 0 && (pendingVisible || showOfflineBanner) && (
+            <PendingOperations count={queuedCount} onRetry={showOfflineBanner ? undefined : handleRetryNow} retrying={retrying} />
           )}
           {error && (
             <div

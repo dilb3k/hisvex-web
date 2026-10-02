@@ -65,8 +65,8 @@ interface AuthState {
   isAuthenticated: boolean
   // True when the session was accepted on the strength of a locally-decoded,
   // not-yet-expired JWT because neither backend answered — not a real "the
-  // server confirmed this session" state. Cleared the next time /auth/me
-  // actually succeeds.
+  // server confirmed this session" state. Cleared when a real authenticated
+  // backend response confirms the current session (never by a local cache hit).
   isOffline: boolean
   setAuth: (token: string, refreshToken: string, user: User) => void
   setUser: (user: User) => void
@@ -173,8 +173,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // is having a bad moment — worse than working offline off the cached
       // user, which is exactly what desktop/mobile already do. Trust the
       // locally-cached session only while the JWT itself hasn't expired;
-      // the very next successful /auth/me call (health-recheck-triggered
-      // reconnect) clears isOffline and re-confirms everything for real.
+      // the next successful authenticated backend response clears isOffline
+      // and re-confirms the current session.
       const expMs = decodeJwtExpMs(result.token)
       const stillValid = expMs !== null && expMs > Date.now()
       if (stillValid && result.user) {

@@ -145,13 +145,15 @@ export async function assertNoPendingProductWrites(ids:string[]) {
 export async function getQueueCount(): Promise<number> { const owner=activeOwner; return owner ? (await records(owner)).length : 0 }
 type Listener=(count:number)=>void
 const listeners=new Set<Listener>()
+let notificationVersion = 0
 export function subscribeOfflineQueueCount(listener: Listener) {
   listeners.add(listener)
   const owner=activeOwner
-  void getQueueCount().then(count=>{if(listeners.has(listener)&&owner===activeOwner)listener(count)}).catch(()=>{})
+  const version = notificationVersion
+  void getQueueCount().then(count=>{if(listeners.has(listener)&&owner===activeOwner&&version===notificationVersion)listener(count)}).catch(()=>{})
   return ()=>{listeners.delete(listener)}
 }
-async function notifyListeners() { const owner=activeOwner;const count=await getQueueCount();if(owner===activeOwner) listeners.forEach(listener=>listener(count)) }
+async function notifyListeners() { const owner=activeOwner;const version=++notificationVersion;const count=await getQueueCount();if(owner===activeOwner&&version===notificationVersion) listeners.forEach(listener=>listener(count)) }
 
 function dependencies(item: QueuedWrite): string[] {
   const data = item.data as {productId?:string;lines?: {productId:string}[];items?:{productId:string}[]}
@@ -159,11 +161,16 @@ function dependencies(item: QueuedWrite): string[] {
   if(data?.productId) ids.push(data.productId)
   return ids.length ? ids : [item.url]
 }
-const flushing=new Set<string>()
-export async function flushOfflineQueue(send:(item:QueuedWrite)=>Promise<void>):Promise<void> {
+const flushing=new Map<string, Promise<void>>()
+export function isTransientQueueFailure(status: number | undefined, code: string | undefined): boolean {
+  return (status === 404 && code === 'ROUTE_NOT_FOUND') || (status === 409 && code === 'OPERATION_IN_PROGRESS')
+}
+export function flushOfflineQueue(send:(item:QueuedWrite)=>Promise<void>):Promise<void> {
   const owner=activeOwner
-  if(!owner || flushing.has(owner)) return
-  flushing.add(owner)
+  if(!owner) return Promise.resolve()
+  const running = flushing.get(owner)
+  if (running) return running
+  const run = (async () => {
   try {
     const items=await getQueuedWrites(owner)
     const blocked=new Set<string>()
@@ -185,7 +192,7 @@ export async function flushOfflineQueue(send:(item:QueuedWrite)=>Promise<void>):
         // the whole queue on the next automatic attempt, so it self-heals
         // once the deploy mismatch resolves rather than being silently
         // stranded in "needs review" forever.
-        if(status===404 && code==='ROUTE_NOT_FOUND') break
+        if(isTransientQueueFailure(status, code) || (error as { requiresReview?: boolean })?.requiresReview === false) break
         if(status && [400,403,404,409,422].includes(status)) {
           await markQueuedWriteForReview(item.id,(error as Error).message || `HTTP ${status}`,owner)
           resources.forEach(resource=>blocked.add(resource));continue
@@ -194,4 +201,7 @@ export async function flushOfflineQueue(send:(item:QueuedWrite)=>Promise<void>):
       }
     }
   } finally {flushing.delete(owner)}
+  })()
+  flushing.set(owner, run)
+  return run
 }

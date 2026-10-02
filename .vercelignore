@@ -1,0 +1,29 @@
+# Credentials stay in Vercel's managed environment, never in uploaded source.
+.env*
+credentials*.json
+service-account*.json
+*backup*.json
+*.dump
+*.backup
+*.pem
+*.key
+*.p12
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
+.claude
+
+# Deploy source; Vercel performs its own complete production build.
+node_modules
+.next
+.vercel
+/dist
+/out
+*.tsbuildinfo
+*.log
+/audit
+/test-artifacts
+test-results
+playwright-report
+coverage
