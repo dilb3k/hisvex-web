@@ -17,7 +17,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     // Replays anything left queued from a previous session (tab closed while
     // both backends were unreachable) as soon as this one starts.
     flushOfflineQueueOnStartup()
-    return subscribeOfflineQueueCount(setQueuedCount)
+    const unsubscribeCount = subscribeOfflineQueueCount(setQueuedCount)
+    // Desktop (syncEngine.ts) and Mobile (useNetworkStatus.ts) both already
+    // retry automatically on reconnect and on a periodic timer — the web
+    // app only ever retried on initial mount, so a tab left open across an
+    // outage never noticed the backend coming back until manually
+    // refreshed. Mirrors the same two triggers here.
+    window.addEventListener('online', flushOfflineQueueOnStartup)
+    const interval = setInterval(flushOfflineQueueOnStartup, 60_000)
+    return () => {
+      unsubscribeCount()
+      window.removeEventListener('online', flushOfflineQueueOnStartup)
+      clearInterval(interval)
+    }
   }, [])
 
   const showOfflineBanner = isOffline || queuedCount > 0
