@@ -61,7 +61,7 @@ async function readAndCheckPlatformNotFound(res: Response): Promise<{ matched: b
 
 function isHeavy(path: string, contentType: string | null): boolean {
   if (contentType?.includes('multipart/form-data')) return true
-  return path.includes('/snapshots') || path.includes('/inventory/range') || path.includes('/stats')
+  return path.includes('/snapshots') || path.includes('/inventory/range') || path.includes('/stats') || path.includes('/procurements')
 }
 
 // Headers that belong to THIS hop (client<->proxy or proxy<->backend) only

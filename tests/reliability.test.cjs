@@ -362,3 +362,16 @@ test('an old-account success cannot clear the current account offline state',asy
   await beginning;h.setOwner('B');complete()
   await assert.rejects(old,/Hisob|Sessiya/);assert.equal(reachable,0)
 })
+
+test('procurement PDF and XLSX export bytes and download headers survive the failover proxy', async()=>{
+ for (const [format,mime,prefix] of [['pdf','application/pdf',[37,80,68,70]],['xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',[80,75,3,4]]]) {
+  const bytes=new Uint8Array([...prefix,0,255,127,42]);
+  const p=proxy([new Response(bytes,{headers:{'content-type':mime,'content-disposition':`attachment; filename="kirim.${format}"`}})]);
+  const res=await request(p,'GET',['procurements','export']);assert.equal(res.headers.get('content-type'),mime);assert.ok(res.headers.get('content-disposition').includes('kirim.'+format));assert.deepEqual(new Uint8Array(await res.arrayBuffer()),bytes);assert.equal(p.calls.length,1);
+ }
+});
+test('procurement analytics and atomic batches receive the heavy request timeout', async()=>{
+ const h=apiHarness();let config;h.api.defaults.adapter=async c=>{config=c;return {data:{success:true,data:{}},status:200,headers:{},config:c}};
+ await h.api.get('/procurements/analytics');assert.equal(config.timeout,125000);
+ await h.api.post('/procurements',{items:[]},{headers:{'Idempotency-Key':'test-procurement-timeout'}});assert.equal(config.timeout,125000);
+});
