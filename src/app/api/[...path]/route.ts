@@ -9,6 +9,7 @@ const BACKUP_URL = process.env.BACKEND_BACKUP_URL || 'https://hisvex-api.onrende
 
 const DEFAULT_TIMEOUT_MS = 10000
 const HEAVY_TIMEOUT_MS = 60000
+const AUTH_TIMEOUT_MS = 30000
 
 // Serverless instances are short-lived and this can't be guaranteed to
 // persist across every invocation the way a long-running process could —
@@ -21,12 +22,23 @@ const HEAVY_TIMEOUT_MS = 60000
 let primaryDownUntil = 0
 const PRIMARY_COOLDOWN_MS = 60_000
 
-// A 502/503/504 means the backend ITSELF is failing (bad gateway / down for
-// maintenance / overloaded) — that's what triggers failover. A normal 4xx
-// from a backend that's actually up (bad auth, not found, validation) is a
-// real answer, not a reason to retry it against the other server.
+// Gateway statuses may also carry an explicit application rejection, such
+// as OTP_DELIVERY_FAILED. Preserve that known outcome instead of hiding it
+// behind an outage error or treating a healthy backend as unavailable.
 function isFailoverTriggeringStatus(status: number): boolean {
   return status === 502 || status === 503 || status === 504
+}
+
+async function isOtpDeliveryFailure(res: Response): Promise<boolean> {
+  if (res.status !== 503) return false
+  try {
+    const data = await res.clone().json()
+    return data?.success === false && data?.error?.code === 'OTP_DELIVERY_FAILED'
+  } catch { return false }
+}
+
+function isSessionLogin(path: string): boolean {
+  return ['/auth/login', '/auth/login/verify-phone', '/auth/verify-session-challenge'].includes(path)
 }
 
 // Railway's own edge router returns a plain 404 when the service itself is
@@ -134,7 +146,10 @@ async function fetchWithFailover(
   if (!skipPrimary) {
     const res = await attemptOnce(`${PRIMARY_URL}${path}`, method, headers, body, timeoutMs)
 
-    if (res && res.status === 404) {
+    if (res && await isOtpDeliveryFailure(res)) {
+      primaryDownUntil = 0
+      return { res, usedBackup: false }
+    } else if (res && res.status === 404) {
       const { matched, body: bodyBuf } = await readAndCheckPlatformNotFound(res)
       if (!matched) {
         // A real, normal 404 from the app itself — return it exactly as
@@ -169,7 +184,10 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   const search = req.nextUrl.search
   const method = req.method
   const contentType = req.headers.get('content-type')
-  const timeoutMs = isHeavy(path, contentType) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
+  const timeoutMs = isSessionLogin(path) ? AUTH_TIMEOUT_MS : isHeavy(path, contentType) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
+  const unavailableMessage = isSessionLogin(path)
+    ? 'Kirish so‘roviga javob olinmadi. Birozdan keyin qayta urinib ko‘ring.'
+    : 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.'
 
   // Buffered once, not streamed straight through — a stream can only be
   // read once, and a failover retry needs to send the exact same bytes to
@@ -184,16 +202,16 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
 
   if (!res) {
     return NextResponse.json(
-      { success: false, error: { code: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? 'BOTH_BACKENDS_DOWN' : 'WRITE_OUTCOME_UNKNOWN', message: 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.' } },
+      { success: false, error: { code: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? 'BOTH_BACKENDS_DOWN' : 'WRITE_OUTCOME_UNKNOWN', message: unavailableMessage } },
       { status: 503 },
     )
   }
-  if (isFailoverTriggeringStatus(res.status) && usedBackup) {
+  if (isFailoverTriggeringStatus(res.status) && usedBackup && !await isOtpDeliveryFailure(res)) {
     // Backup (or primary, retried directly when the cooldown made us skip
     // straight to it) is ALSO failing this exact request — both backends
     // are down, not just one.
     return NextResponse.json(
-      { success: false, error: { code: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? 'BOTH_BACKENDS_DOWN' : 'WRITE_OUTCOME_UNKNOWN', message: 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.' } },
+      { success: false, error: { code: ['GET', 'HEAD', 'OPTIONS'].includes(method) ? 'BOTH_BACKENDS_DOWN' : 'WRITE_OUTCOME_UNKNOWN', message: unavailableMessage } },
       { status: 503 },
     )
   }

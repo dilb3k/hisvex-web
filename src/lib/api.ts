@@ -27,6 +27,7 @@ interface InventoryResponse {
 // and masking it with a generic timeout error.
 const DEFAULT_TIMEOUT_MS = 22000
 const HEAVY_TIMEOUT_MS = 125000
+const AUTH_TIMEOUT_MS = 35000
 
 const API_BASE_URL = '/api'
 
@@ -54,6 +55,10 @@ function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) return true
   const url = config.url ?? ''
   return url.includes('/snapshots') || url.includes('/inventory/range') || url.includes('/stats')
+}
+
+function isSessionLogin(config: InternalAxiosRequestConfig): boolean {
+  return ['/auth/login', '/auth/login/verify-phone', '/auth/verify-session-challenge'].includes(config.url ?? '')
 }
 
 // The only writes queued for offline replay when BOTH backends are down —
@@ -204,7 +209,7 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     config.headers.Authorization = `Bearer ${apiToken}`
   }
   if (!config.timeout) {
-    config.timeout = isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
+    config.timeout = isSessionLogin(config) ? AUTH_TIMEOUT_MS : isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
   }
   if (isOfflineQueuable(config)) {
     // Axios may have serialized data on a prior attempt. Recover the same

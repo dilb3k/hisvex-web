@@ -81,10 +81,10 @@ test('account switch during a flush cannot send the next record under the new ac
 })
 
 const proxySource=transpile('src/app/api/[...path]/route.ts')
-function proxy(responses) {
+function proxy(responses, signalFactory=AbortSignal) {
   const calls=[];const context={exports:{},require:name=>{if(name==='next/server') return require('next/server');throw Error(name)},
     process:{env:{BACKEND_PRIMARY_URL:'https://primary.test/api',BACKEND_BACKUP_URL:'https://backup.test/api'}},
-    Headers,Response,AbortSignal,TextDecoder,fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
+    Headers,Response,AbortSignal:signalFactory,TextDecoder,fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
   }
   vm.runInNewContext(proxySource,context)
   return {handlers:context.exports,calls}
@@ -96,6 +96,43 @@ test('proxy GET fails over once; POST unknown outcome never replays on backup',a
   const read=proxy([new Response('down',{status:503}),new Response('ok')]);assert.equal((await request(read,'GET')).status,200);assert.equal(read.calls.length,2)
   const write=proxy([Error('response lost'),new Response('would duplicate')]);const result=await request(write,'POST');assert.equal(result.status,503);assert.equal(write.calls.length,1)
   assert.equal((await result.json()).error.code,'WRITE_OUTCOME_UNKNOWN')
+})
+const otpFailure=()=>new Response(JSON.stringify({success:false,error:{code:'OTP_DELIVERY_FAILED',message:'Telegram kodi yetkazilmadi'}}),{status:503,headers:{'content-type':'application/json'}})
+test('OTP rejection is passed unchanged and does not trip the primary circuit breaker',async()=>{
+  const p=proxy([otpFailure(),new Response('{"success":true}')])
+  const result=await request(p,'POST',['auth','login'])
+  assert.equal(result.status,503);assert.equal((await result.json()).error.code,'OTP_DELIVERY_FAILED')
+  await request(p,'POST',['auth','login','procurement'])
+  assert.equal(p.calls.length,2);assert.ok(p.calls.every(call=>call.url.startsWith('https://primary.test/')))
+})
+test('backup OTP rejection remains a known outcome instead of WRITE_OUTCOME_UNKNOWN',async()=>{
+  const q=proxy([Error('primary unavailable'),new Response('ok'),otpFailure()])
+  await request(q,'GET',['health'])
+  const rejected=await request(q,'POST',['auth','login'])
+  assert.equal(rejected.status,503);assert.equal((await rejected.json()).error.code,'OTP_DELIVERY_FAILED')
+  assert.equal(q.calls.length,3);assert.match(q.calls[2].url,/backup\.test/)
+})
+test('session login receives 30 seconds without retrying a timed-out POST',async()=>{
+  for(const path of [['auth','login'],['auth','login','verify-phone'],['auth','verify-session-challenge']]) {
+    const budgets=[];const p=proxy([Error('timed out'),new Response('must not replay')],{timeout:ms=>{budgets.push(ms);return AbortSignal.timeout(ms)}})
+    const result=await request(p,'POST',path)
+    assert.equal(result.status,503);assert.deepEqual(budgets,[30000]);assert.equal(p.calls.length,1)
+  }
+})
+test('ordinary login and OTP verification client waits longer than the proxy budget',async()=>{
+  const h=apiHarness();let config
+  h.api.defaults.adapter=async c=>{config=c;return response(c)}
+  for(const url of ['/auth/login','/auth/login/verify-phone','/auth/verify-session-challenge']) {
+    await h.api.post(url,{});assert.equal(config.timeout,35000)
+  }
+  await h.api.post('/auth/login/procurement',{});assert.equal(config.timeout,22000)
+})
+test('the client exposes the OTP delivery rejection as an actionable error',async()=>{
+  const h=apiHarness()
+  await assert.rejects(h.api.post('/auth/login',{}, {adapter:async config=>{
+    throw new h.axios.AxiosError('unavailable','ERR_BAD_RESPONSE',config,{}, {...response(config,{success:false,error:{code:'OTP_DELIVERY_FAILED',message:'Telegram kodi yetkazilmadi'}}),status:503})
+  }}),error=>error.code==='OTP_DELIVERY_FAILED'&&error.message==='Telegram kodi yetkazilmadi'&&error.status===503)
+  assert.equal(h.saved.length,0)
 })
 test('proxy passes application conflicts without retry and supports all null-body statuses',async()=>{
   const conflict=proxy([new Response('conflict',{status:409})]);assert.equal((await request(conflict,'POST')).status,409);assert.equal(conflict.calls.length,1)
