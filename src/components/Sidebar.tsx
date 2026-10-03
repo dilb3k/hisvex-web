@@ -48,11 +48,10 @@ const sidebarNavItems: NavItem[] = sidebarNavSections.flatMap((s) => s.items)
 const mobileTabItems = [
   { to: '/dashboard/products', icon: Package, labelKey: 'products' as const, roles: ['admin'] },
   { to: '/dashboard/procurements', icon: ClipboardList, labelKey: 'procurements' as const, roles: ['admin'] },
-      { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['admin'] },
+  { to: '/dashboard/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['admin'] },
   { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['admin'] },
   { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['admin'] },
   { to: '/dashboard/users', icon: Users, labelKey: 'users' as const, roles: ['superAdmin'] },
-  { to: '/dashboard/debtors', icon: HandCoins, labelKey: 'debtors' as const, roles: ['admin'] },
 ]
 
 const iconBtn: React.CSSProperties = {
@@ -78,6 +77,7 @@ export function Sidebar() {
     .filter(section => section.items.length > 0)
   const visibleTabs = mobileTabItems.filter(item => (user?.scope === 'procurement' ? ['/dashboard/products','/dashboard/procurements'].includes(item.to) : item.roles.includes(user?.role || '')))
   const active = (to: string) => to === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(to)
+  const canAccessOwnerPages = user?.role === 'admin' && user.scope !== 'procurement'
 
   const handleRefresh = async () => {
     if (user?.scope === 'procurement') { window.dispatchEvent(new Event('hisvex-procurement-refresh')); return }
@@ -272,10 +272,21 @@ export function Sidebar() {
       <header className="mobile-header">
         <span className="mobile-header-title">{currentPageTitle}</span>
         <div className="mobile-header-actions">
+          {canAccessOwnerPages && (
+            <Link
+              href="/dashboard/debtors"
+              className={`mobile-header-btn${active('/dashboard/debtors') ? ' active' : ''}`}
+              title={t('debtors')}
+              aria-label={t('debtors')}
+              aria-current={active('/dashboard/debtors') ? 'page' : undefined}
+            >
+              <HandCoins size={18} />
+            </Link>
+          )}
           <button onClick={handleRefresh} className="mobile-header-btn" title={t('refresh')}>
             <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           </button>
-          {user?.role !== 'superAdmin' && (
+          {canAccessOwnerPages && (
             <Link href="/dashboard/settings" className="mobile-header-btn" title={t('settings')}>
               <Settings size={18} />
             </Link>
