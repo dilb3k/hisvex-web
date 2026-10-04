@@ -249,6 +249,16 @@ test('session verification always reaches the server and presence does not inval
   assert.equal(productCalls,1)
   assert.equal(h.saved.length,0,'presence is never an offline business write')
 })
+test('a password-reset rejection never refreshes auth, signs out another account or queues the password',async()=>{
+  const h=apiHarness();h.exports.setRefreshToken('unrelated-refresh');let logouts=0,refreshes=0,resets=0
+  h.exports.setUnauthorizedHandler(()=>logouts++)
+  const oldPost=h.axios.post
+  h.axios.post=async()=>{refreshes++;throw Error('must not refresh a password reset')}
+  h.api.defaults.adapter=async config=>{resets++;throw new h.axios.AxiosError('rejected','ERR_BAD_REQUEST',config,{}, {...response(config,{success:false,error:{message:'invalid reset'}}),status:401})}
+  try { await assert.rejects(h.exports.authApi.resetPassword('A'.repeat(43),'local-new-password'),/invalid reset/) }
+  finally { h.axios.post=oldPost }
+  assert.equal(resets,1);assert.equal(refreshes,0);assert.equal(logouts,0);assert.equal(h.saved.length,0)
+})
 test('unknown write outcome remains durable with the original ID across Axios serialized retries',async()=>{
   const h=apiHarness();let request
   const original={method:'post',url:'/inventory/sales',data:{deviceId:'test',date:'2026-09-30',lines:[{productId:'p',quantity:1}]},adapter:async config=>{request=config;throw new h.axios.AxiosError('lost','ERR_NETWORK',config)}}

@@ -365,7 +365,7 @@ api.interceptors.response.use(
     const manual = (originalRequest as any)?._manualIntent
     if (manual && isDefinitiveMutationRejection(error.response?.status, error.response?.data)) await manual.registry.acknowledge(manual.slot, manual.id)
     const url = originalRequest?.url ?? ''
-    const isAuthEndpoint = url.includes('/auth/verify-session-challenge') || url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
+    const isAuthEndpoint = url.includes('/auth/verify-session-challenge') || url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout') || url.includes('/auth/password/reset')
 
     // The proxy (src/app/api/[...path]/route.ts) already tried primary then
     // backup server-side before this response ever reached the browser — no
@@ -458,6 +458,7 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  resetPassword: (token: string, password: string) => api.post<{ reset: boolean; userId: string; username: string }>('/auth/password/reset', { token, password }),
   beginRegistrationPhone: () => api.post<{ token: string; botUrl: string; expiresAt: string }>('/auth/register/phone', {}),
   registrationPhoneStatus: (token: string) => api.post<{ verified: boolean; phone: string | null }>('/auth/register/phone/status', { token }),
   heartbeat: () => api.post('/auth/session/heartbeat', {}),

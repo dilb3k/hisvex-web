@@ -13,6 +13,7 @@ import { formatPhone } from '@/lib/formatters'
 import { formatMoney, formatQuantity } from '@/lib/inventory'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 import { PasswordInput } from '@/components/PasswordInput'
+import { TelegramIcon } from '@/components/TelegramIcon'
 
 // Every value here is a theme token, not a literal. The page used to carry
 // its own violet dark palette (#070512, rgba(167,139,250,…)), which is why it
@@ -617,6 +618,7 @@ export default function LoginPage() {
                     placeholder={t('passwordPlaceholder')}
                     autoCapitalize="none" autoCorrect="off"
                   />
+                  {isLoginMode && <a href="https://t.me/hisvex_bot?start=reset_password" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, color: C.primary, fontSize: 12.5, lineHeight: 1.5 }}><TelegramIcon size={16} />{t('forgotPassword')}</a>}
                 </div>
 
                 {!isLoginMode && (
