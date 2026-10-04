@@ -444,7 +444,7 @@ export default function SalesPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [cart, totals, totalPieces, submitting, loadInventory, refreshAll, clearCart])
+  }, [cart, totals, totalPieces, submitting, inventoryItems, products, loadInventory, refreshAll, clearCart])
 
   // Manual-entry barcode sheet was not handled before - see useEscapeKey.ts.
   // The camera scanner modal handles its own Escape internally.

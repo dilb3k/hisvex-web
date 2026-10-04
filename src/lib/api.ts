@@ -222,7 +222,7 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     config.data = data
     if (!(config as any)._queueReplay) await enqueueWrite({id:data.idempotencyKey,method:config.method as 'post'|'put',url:config.url!,data,owner:getQueueOwner()!})
   }
-  if (config.method === 'get') {
+  if (config.method === 'get' && !config.url?.startsWith('/auth/')) {
     // Stamp the generation active at dispatch time so the response handler can tell
     // whether a mutation raced ahead of this GET before its response landed.
     ;(config as InternalAxiosRequestConfig & { _cacheGen?: number })._cacheGen = cacheGeneration
@@ -334,7 +334,7 @@ api.interceptors.response.use(
     if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
       response.data = body.data
     }
-    if (response.config.method === 'get') {
+    if (response.config.method === 'get' && !response.config.url?.startsWith('/auth/')) {
       // Only cache this response if no mutation completed since the request was sent —
       // otherwise it's a stale in-flight read racing a mutation's cache-clear, and
       // writing it in would silently resurrect pre-mutation data.
@@ -342,7 +342,7 @@ api.interceptors.response.use(
       if (reqGen === cacheGeneration && !response.headers['x-local-cache']) {
         cache.set(cacheKey(response.config), { data: response.data, ts: Date.now() })
       }
-    } else {
+    } else if (response.config.method !== 'get' && response.config.url !== '/auth/session/heartbeat') {
       // Invalidate synchronously, before this mutating call's promise resolves to its
       // caller, so an immediately-following GET can never observe stale cached data.
       cache.clear()
@@ -458,6 +458,7 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  heartbeat: () => api.post('/auth/session/heartbeat', {}),
   loginProcurement: (username: string, password: string) => api.post<AuthSuccess>('/auth/login/procurement', { username, password }),
   login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
   loginWithPhone: (username: string, password: string, phone_number: string) => api.post<AuthResponse>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
@@ -469,6 +470,7 @@ export const authApi = {
     username,
     password,
     phone_number,
+    deviceId: getDeviceId(),
     ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
   }),
   // The caller passes its token explicitly because logout races the local

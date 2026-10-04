@@ -94,6 +94,10 @@ export default function LoginPage() {
         setError(t('passwordTooShort'))
         return
       }
+      if (phoneNumber.replace(/\D/g, '').length < 7) {
+        setError(t('phoneRequired'))
+        return
+      }
       const hour = Number(businessDayStartHour.trim())
       if (!businessDayStartHour.trim() || !Number.isInteger(hour) || hour < 0 || hour > 23) {
         setError(t('businessDayStartRequired'))
@@ -634,6 +638,9 @@ export default function LoginPage() {
                         placeholder={t('phoneNumberPlaceholder')}
                         autoCapitalize="none" autoCorrect="off"
                       />
+                      <p style={{ color: C.textSecondary, fontSize: 12, margin: '8px 0 0', lineHeight: 1.5 }}>
+                        {t('telegramSetupHelp')}
+                      </p>
                     </div>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginLeft: 2 }}>

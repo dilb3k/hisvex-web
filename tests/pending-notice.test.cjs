@@ -41,6 +41,8 @@ function layout() {
       if (name === 'react/jsx-runtime') return require(name)
       if (name === './Sidebar') return { Sidebar }
       if (name === './PendingOperations') return { PendingOperations }
+      if (name === './TelegramSetup') return { TelegramSetup: () => null }
+      if (name === '@/lib/sessionHeartbeat') return { startSessionHeartbeat: () => ({ ping: async () => {}, stop() {} }) }
       if (name === '@/lib/authStore') return { useAuthStore: select => select(auth) }
       if (name === '@/lib/appStore') return { useAppStore: () => ({ error: null, clearError() {}, toast: { visible: false }, hideToast() {}, showToast: (...args) => toasts.push(args) }) }
       if (name === '@/lib/offlineQueue') return { getQueueOwner: () => 'A', getQueueCount: async () => count, retryAllReviewedWrites: async () => 0,

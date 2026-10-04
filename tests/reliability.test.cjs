@@ -233,6 +233,22 @@ test('reading a cached response never renews its original expiry',async()=>{
   h.setTime(31000);await h.api.get('/products',config)
   assert.equal(calls,2)
 })
+test('session verification always reaches the server and presence does not invalidate catalog cache',async()=>{
+  const h=apiHarness();let meCalls=0,productCalls=0
+  h.api.defaults.adapter=async config=>{
+    if(config.url==='/auth/me') meCalls++
+    if(config.url==='/products') productCalls++
+    return response(config,{telegramId:meCalls>1?'linked':null})
+  }
+  await h.exports.authApi.getMe()
+  const linked=await h.exports.authApi.getMe()
+  assert.equal(meCalls,2);assert.equal(linked.data.telegramId,'linked')
+  await h.api.get('/products')
+  await h.exports.authApi.heartbeat()
+  await h.api.get('/products')
+  assert.equal(productCalls,1)
+  assert.equal(h.saved.length,0,'presence is never an offline business write')
+})
 test('unknown write outcome remains durable with the original ID across Axios serialized retries',async()=>{
   const h=apiHarness();let request
   const original={method:'post',url:'/inventory/sales',data:{deviceId:'test',date:'2026-09-30',lines:[{productId:'p',quantity:1}]},adapter:async config=>{request=config;throw new h.axios.AxiosError('lost','ERR_NETWORK',config)}}

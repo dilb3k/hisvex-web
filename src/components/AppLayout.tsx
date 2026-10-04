@@ -6,18 +6,34 @@ import { PendingOperations } from './PendingOperations'
 import { useAppStore } from '@/lib/appStore'
 import { useAuthStore } from '@/lib/authStore'
 import { subscribeOfflineQueueCount, retryAllReviewedWrites, getQueueOwner, getQueueCount } from '@/lib/offlineQueue'
-import { flushOfflineQueueOnStartup } from '@/lib/api'
+import { authApi, flushOfflineQueueOnStartup } from '@/lib/api'
+import { startSessionHeartbeat } from '@/lib/sessionHeartbeat'
+import { TelegramSetup } from './TelegramSetup'
 import { X, AlertTriangle, CheckCircle, Info, WifiOff, RotateCw } from 'lucide-react'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { error, clearError, toast, hideToast, showToast } = useAppStore()
   const scoped = useAuthStore(s => s.user?.scope === 'procurement')
+  const userId = useAuthStore(s => s.user?._id)
   const isOffline = useAuthStore((s) => s.isOffline)
   const [queuedCount, setQueuedCount] = useState(0)
   const [retrying, setRetrying] = useState(false)
   const [browserOffline, setBrowserOffline] = useState(false)
   const [pendingVisible, setPendingVisible] = useState(false)
   const pendingSince = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!userId || scoped) return
+    const heartbeat = startSessionHeartbeat(authApi.heartbeat, () => navigator.onLine && document.visibilityState === 'visible')
+    const ping = () => { void heartbeat.ping() }
+    window.addEventListener('online', ping)
+    document.addEventListener('visibilitychange', ping)
+    return () => {
+      heartbeat.stop()
+      window.removeEventListener('online', ping)
+      document.removeEventListener('visibilitychange', ping)
+    }
+  }, [userId, scoped])
 
   const handleRetryNow = async () => {
     const owner = getQueueOwner()
@@ -90,6 +106,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           overflow: 'hidden',
           background: 'var(--color-bg)',
         }}>
+          <TelegramSetup />
           {showOfflineBanner && (
             <div
               role="status"
