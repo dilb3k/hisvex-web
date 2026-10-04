@@ -1,5 +1,4 @@
 'use client'
-import { ProcurementAnalytics } from '@/components/ProcurementInsights'
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { inventoryApi } from '@/lib/api'
@@ -817,7 +816,6 @@ export default function StatisticsPage() {
       {/* Section A — "Bu davr" (this period, realized/actual only) */}
       <div style={{ ...SECTION_LABEL, marginBottom: 8 }}><Wallet size={13} /> {t('statsThisPeriod')}</div>
 
-      <ProcurementAnalytics from={range.from} to={range.to} refreshKey={refreshKey} />
       {/* Period tabs + refresh */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', background: 'var(--color-surface)', borderRadius: 12, padding: 3, border: '1px solid var(--color-border)' }}>

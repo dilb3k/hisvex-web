@@ -458,6 +458,8 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  beginRegistrationPhone: () => api.post<{ token: string; botUrl: string; expiresAt: string }>('/auth/register/phone', {}),
+  registrationPhoneStatus: (token: string) => api.post<{ verified: boolean; phone: string | null }>('/auth/register/phone/status', { token }),
   heartbeat: () => api.post('/auth/session/heartbeat', {}),
   loginProcurement: (username: string, password: string) => api.post<AuthSuccess>('/auth/login/procurement', { username, password }),
   login: (username: string, password: string) => api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
@@ -466,10 +468,11 @@ export const authApi = {
   // types.ts. Same success shape as a normal login (token/refreshToken/user).
   verifySessionChallenge: (sessionChallengeId: string, otpCode: string) =>
     api.post<AuthSuccess>('/auth/verify-session-challenge', { sessionChallengeId, otpCode, deviceId: getDeviceId() }),
-  register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number) => api.post<AuthSuccess>('/auth/register', {
+  register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number, phoneVerificationToken?: string) => api.post<AuthSuccess>('/auth/register', {
     username,
     password,
     phone_number,
+    phoneVerificationToken,
     deviceId: getDeviceId(),
     ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
   }),

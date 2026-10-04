@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { RegistrationPhone } from '@/components/RegistrationPhone'
+import type { VerifiedRegistrationPhone } from '@/lib/useRegistrationPhone'
+
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { authApi, getStaleToken } from '@/lib/api'
@@ -48,6 +51,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('+998')
+  const [signupPhone, setSignupPhone] = useState<VerifiedRegistrationPhone | null>(null)
   const [businessDayStartHour, setBusinessDayStartHour] = useState('')
   const [showBusinessDayHelp, setShowBusinessDayHelp] = useState(false)
   const [phoneVerifyStep, setPhoneVerifyStep] = useState(false)
@@ -94,8 +98,8 @@ export default function LoginPage() {
         setError(t('passwordTooShort'))
         return
       }
-      if (phoneNumber.replace(/\D/g, '').length < 7) {
-        setError(t('phoneRequired'))
+      if (!signupPhone) {
+        setError(t('registrationPhoneRequired'))
         return
       }
       const hour = Number(businessDayStartHour.trim())
@@ -130,8 +134,9 @@ export default function LoginPage() {
         const { data } = await authApi.register(
           username.trim(),
           password,
-          phoneNumber.replace(/\D/g, '') || undefined,
+          signupPhone!.phone,
           Number(businessDayStartHour.trim()),
+          signupPhone!.token,
         )
         setAuth(data.token, data.refreshToken ?? '', data.user)
         goHome(data.user)
@@ -241,6 +246,7 @@ export default function LoginPage() {
   }
 
   const switchMode = (next: 'login' | 'register') => {
+    setSignupPhone(null)
     setMode(next)
     setPhoneVerifyStep(false)
     setError('')
@@ -629,18 +635,8 @@ export default function LoginPage() {
                     </div>
                     <div>
                       <label style={labelStyle}>{t('phoneNumber')}</label>
-                      <input
-                        type="tel" value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(formatPhone(e.target.value))}
-                        onFocus={() => setFocusedField('phone')}
-                        onBlur={() => setFocusedField(null)}
-                        style={inputStyle('phone')}
-                        placeholder={t('phoneNumberPlaceholder')}
-                        autoCapitalize="none" autoCorrect="off"
-                      />
-                      <p style={{ color: C.textSecondary, fontSize: 12, margin: '8px 0 0', lineHeight: 1.5 }}>
-                        {t('telegramSetupHelp')}
-                      </p>
+                      <RegistrationPhone onVerified={setSignupPhone} />
+
                     </div>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginLeft: 2 }}>
@@ -685,13 +681,13 @@ export default function LoginPage() {
                 )}
 
                 <button
-                  type="submit" disabled={loading}
+                  type="submit" disabled={loading || (!isLoginMode && !signupPhone)}
                   style={{
                     width: '100%', padding: '12px 16px', borderRadius: 9, border: 'none',
                     background: C.primary, color: '#fff',
                     fontSize: 15, fontWeight: 700,
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.7 : 1, marginTop: 4,
+                    cursor: loading || (!isLoginMode && !signupPhone) ? 'not-allowed' : 'pointer',
+                    opacity: loading || (!isLoginMode && !signupPhone) ? 0.7 : 1, marginTop: 4,
                     transition: 'background 0.15s',
                   }}
                   onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = '#6D28D9' }}
