@@ -184,19 +184,36 @@ test('an aborted IndexedDB transaction never reports a durable acknowledgement',
 
 const apiSource=transpile('src/lib/api.ts')
 function apiHarness(storage = new Map(), queueOverride) {
+  let language='uz'
+  const localized={exports:{}};vm.runInNewContext(transpile('src/lib/apiErrorMessages.ts'),localized)
   const axios=require('axios');let owner=null;const saved=[];const removed=[];let now=0
   class TestDate extends Date {static now(){return now}}
   const offlineQueue={setQueueOwner:value=>owner=value,getQueueOwner:()=>owner,enqueueWrite:async item=>saved.push(structuredClone(item)),removeQueuedWrite:async(id,account)=>removed.push({id,account}),markQueuedWriteForReview:async(id,message,account)=>saved.push({review:id,message,account}),flushOfflineQueue:async()=>{},isTransientQueueFailure:queue().isTransientQueueFailure,...queueOverride}
   const manual={exports:{}};vm.runInNewContext(transpile('src/lib/manualMutationIntent.ts'),manual)
   let lock=Promise.resolve();
-  const context={exports:{},require:name=>{if(name==='axios')return axios;if(name==='./manualMutationIntent')return manual.exports;if(name==='./offlineQueue')return offlineQueue;if(name==='./businessDay')return {getBusinessDate:()=> '2026-09-30'};throw Error(name)},
+  const context={exports:{},require:name=>{if(name==='axios')return axios;if(name==='./i18n')return {getLanguage:()=>language};if(name==='./apiErrorMessages')return localized.exports;if(name==='./manualMutationIntent')return manual.exports;if(name==='./offlineQueue')return offlineQueue;if(name==='./businessDay')return {getBusinessDate:()=> '2026-09-30'};throw Error(name)},
     crypto:webcrypto,TextEncoder,FormData,Date:TestDate,atob,console,localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},navigator:{locks:{request:(_key,work)=>{const run=lock.then(work);lock=run.catch(()=>{});return run}}},window:{location:{href:''}},setTimeout,clearTimeout,
   }
   vm.runInNewContext(apiSource,context)
   const setOwner=id=>context.exports.setApiToken(`header.${Buffer.from(JSON.stringify({userId:id})).toString('base64url')}.signature`)
   setOwner('A')
-  return {api:context.exports.default,exports:context.exports,saved,removed,storage,setOwner,getOwner:offlineQueue.getQueueOwner,setTime:value=>now=value,axios}
+  return {api:context.exports.default,exports:context.exports,saved,removed,storage,setOwner,getOwner:offlineQueue.getQueueOwner,setTime:value=>now=value,axios,setLanguage:value=>language=value}
 }
+
+test('API sends the current UI language and localizes old login errors after a language change',async()=>{
+  const h=apiHarness(),headers=[]
+  h.api.defaults.adapter=async config=>{headers.push(config.headers['Accept-Language']);throw new h.axios.AxiosError('unauthorized','ERR_BAD_REQUEST',config,{}, {...response(config,{success:false,error:{message:'Invalid username or password',code:'INVALID_CREDENTIALS'}}),status:401})}
+  await assert.rejects(h.api.post('/auth/login',{username:'test',password:'wrong'}),error=>error.message==='Login yoki parol noto‘g‘ri'&&error.code==='INVALID_CREDENTIALS'&&error.status===401)
+  h.setLanguage('ru')
+  await assert.rejects(h.api.post('/auth/login',{username:'test',password:'wrong'}),error=>error.message==='Неверный логин или пароль'&&error.code==='INVALID_CREDENTIALS'&&error.status===401)
+  assert.deepEqual(headers,['uz','ru'])
+})
+
+test('network errors follow the selected language without changing their recovery behavior',async()=>{
+  const h=apiHarness();h.setLanguage('ru')
+  h.api.defaults.adapter=async config=>{throw new h.axios.AxiosError('Network Error','ERR_NETWORK',config)}
+  await assert.rejects(h.api.post('/auth/login',{}),/Ошибка сети/)
+})
 
 test('manual debtor retry survives restart with the same ID and a known success permits the next operation',async()=>{
   const first=apiHarness();let original;

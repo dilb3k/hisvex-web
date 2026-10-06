@@ -148,7 +148,7 @@ export const kpiIcon: CSSProperties = {
 
 export const formatMoney = (val?: number) => {
   if (val == null || Number.isNaN(val) || !Number.isFinite(val)) return "0 so'm"
-  return val.toLocaleString('uz-UZ') + " so'm"
+  return val.toLocaleString('uz-UZ', { maximumFractionDigits: 2 }) + " so'm"
 }
 
 export const parseFormattedAmount = (text: string) => {

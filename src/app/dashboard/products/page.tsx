@@ -1,4 +1,5 @@
 'use client'
+import { formatInputMoney, parseInputMoney, formatDecimal } from '@/lib/quantities'
 import { ProcurementScreen } from '@/components/ProcurementScreen'
 import { assertNoPendingProductWrites } from '@/lib/offlineQueue'
 
@@ -37,8 +38,6 @@ import {
   label,
   errorText,
   formatMoney,
-  formatInputAmount,
-  parseFormattedAmount,
 } from '@/lib/sharedStyles'
 import { formatPhone } from '@/lib/formatters'
 import { isBlockCodeDisabled } from '@/utils/blockCode'
@@ -234,8 +233,8 @@ function FullProductsPage() {
   }, [products, debouncedSearch])
 
   const previewQty = parseQuantityInput(form.quantity, form.unit)
-  const previewBuy = parseFormattedAmount(form.buyPrice)
-  const previewSell = parseFormattedAmount(form.sellPrice)
+  const previewBuy = parseInputMoney(form.buyPrice)
+  const previewSell = parseInputMoney(form.sellPrice)
   const previewTotalCost = previewQty * previewBuy
   const previewExpectedProfit = previewQty * (previewSell - previewBuy)
   const previewMargin = previewSell > 0 && previewBuy > 0 ? ((previewSell - previewBuy) / previewSell * 100).toFixed(1) : '0'
@@ -269,8 +268,8 @@ function FullProductsPage() {
         ? ''
         : formatQuantityValue(item.quantity, unit),
       unit,
-      buyPrice: item.buyPrice ? formatInputAmount(String(item.buyPrice)) : '',
-      sellPrice: item.sellPrice ? formatInputAmount(String(item.sellPrice)) : '',
+      buyPrice: item.buyPrice ? formatInputMoney(formatDecimal(item.buyPrice, 2)) : '',
+      sellPrice: item.sellPrice ? formatInputMoney(formatDecimal(item.sellPrice, 2)) : '',
       image: item.image || item.imageHash,
       barcodes: item.barcodes ?? [],
     })
@@ -345,8 +344,8 @@ function FullProductsPage() {
       name: form.name.trim(),
       quantity: parseQuantityInput(form.quantity, form.unit),
       unit: form.unit,
-      buyPrice: parseFormattedAmount(form.buyPrice),
-      sellPrice: parseFormattedAmount(form.sellPrice),
+      buyPrice: parseInputMoney(form.buyPrice),
+      sellPrice: parseInputMoney(form.sellPrice),
     })
     setFormErrors(next)
     return !hasValidationErrors(next)
@@ -371,8 +370,8 @@ function FullProductsPage() {
       name: form.name.trim(),
       quantity: parseQuantityInput(form.quantity, form.unit),
       unit: form.unit,
-      buyPrice: parseFormattedAmount(form.buyPrice),
-      sellPrice: parseFormattedAmount(form.sellPrice),
+      buyPrice: parseInputMoney(form.buyPrice),
+      sellPrice: parseInputMoney(form.sellPrice),
       barcodes,
       deviceId: getDeviceId(),
     }
@@ -695,7 +694,7 @@ function FullProductsPage() {
                   type="text"
                   placeholder="0"
                   value={form.buyPrice}
-                  onChange={(e) => { setForm((prev) => ({ ...prev, buyPrice: formatInputAmount(e.target.value) })); setFormErrors((prev) => ({ ...prev, buyPrice: '' })) }}
+                  onChange={(e) => { setForm((prev) => ({ ...prev, buyPrice: formatInputMoney(e.target.value) })); setFormErrors((prev) => ({ ...prev, buyPrice: '' })) }}
                   style={formErrors.buyPrice ? inputError : inputBase}
                 />
                 {formErrors.buyPrice && <div style={errorText}>{formErrors.buyPrice}</div>}
@@ -707,7 +706,7 @@ function FullProductsPage() {
                   type="text"
                   placeholder="0"
                   value={form.sellPrice}
-                  onChange={(e) => { setForm((prev) => ({ ...prev, sellPrice: formatInputAmount(e.target.value) })); setFormErrors((prev) => ({ ...prev, sellPrice: '' })) }}
+                  onChange={(e) => { setForm((prev) => ({ ...prev, sellPrice: formatInputMoney(e.target.value) })); setFormErrors((prev) => ({ ...prev, sellPrice: '' })) }}
                   style={formErrors.sellPrice ? inputError : inputBase}
                 />
                 {formErrors.sellPrice && <div style={errorText}>{formErrors.sellPrice}</div>}

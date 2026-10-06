@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Package, ClipboardList, ShoppingCart, Users, BarChart3, Settings,
-  Shield, LogOut, ChevronLeft, ChevronRight, RefreshCw, HandCoins,
+  Shield, CreditCard, LogOut, ChevronLeft, ChevronRight, RefreshCw, HandCoins,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/lib/authStore'
@@ -39,6 +39,7 @@ const sidebarNavSections: NavSection[] = [
     labelKey: 'navSectionAdmin',
     items: [
       { to: '/dashboard/users', icon: Shield, labelKey: 'users', roles: ['superAdmin'] },
+      { to: '/dashboard/payments', icon: CreditCard, labelKey: 'paymentHistory', roles: ['superAdmin'] },
       { to: '/dashboard/settings', icon: Settings, labelKey: 'settings', roles: ['admin'] },
     ],
   },
@@ -52,6 +53,7 @@ const mobileTabItems = [
   { to: '/dashboard/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['admin'] },
   { to: '/dashboard', icon: BarChart3, labelKey: 'statistics' as const, roles: ['admin'] },
   { to: '/dashboard/users', icon: Users, labelKey: 'users' as const, roles: ['superAdmin'] },
+  { to: '/dashboard/payments', icon: CreditCard, labelKey: 'paymentHistory' as const, roles: ['superAdmin'] },
 ]
 
 const iconBtn: React.CSSProperties = {

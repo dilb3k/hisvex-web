@@ -185,9 +185,10 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   const method = req.method
   const contentType = req.headers.get('content-type')
   const timeoutMs = isSessionLogin(path) ? AUTH_TIMEOUT_MS : isHeavy(path, contentType) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
+  const russian = req.headers.get('accept-language')?.toLowerCase().startsWith('ru')
   const unavailableMessage = isSessionLogin(path)
-    ? 'Kirish so‘roviga javob olinmadi. Birozdan keyin qayta urinib ko‘ring.'
-    : 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.'
+    ? russian ? 'Нет ответа на запрос входа. Попробуйте чуть позже.' : 'Kirish so‘roviga javob olinmadi. Birozdan keyin qayta urinib ko‘ring.'
+    : russian ? 'Не удалось связаться с сервером. Проверьте интернет.' : 'Server bilan bog‘lanib bo‘lmadi. Internetni tekshiring.'
 
   // Buffered once, not streamed straight through — a stream can only be
   // read once, and a failover retry needs to send the exact same bytes to

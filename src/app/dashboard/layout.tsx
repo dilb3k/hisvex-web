@@ -12,7 +12,7 @@ import { AppSplash } from '@/components/AppSplash'
 // left out of both lists - it's reachable (and functionally supports) either role,
 // it's just not linked from a superAdmin's nav (see Sidebar.tsx).
 const ADMIN_ONLY_PATHS = ['/dashboard/products', '/dashboard/inventory', '/dashboard/sales', '/dashboard/debtors']
-const SUPERADMIN_ONLY_PATHS = ['/dashboard/users']
+const SUPERADMIN_ONLY_PATHS = ['/dashboard/users', '/dashboard/payments']
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)

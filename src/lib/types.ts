@@ -98,6 +98,9 @@ export interface InventoryItem {
   buyPrice?: number
   sellPrice?: number
   sold?: number
+  lockedSold?: number
+  lockedRevenue?: number
+  lockedProfit?: number
   revenue?: number
   realizedProfit?: number
   createdAt?: string
@@ -109,6 +112,7 @@ export interface InventoryWithProduct extends InventoryItem {
 }
 
 export interface InventorySummary {
+  quantities?: import('./quantities').InventoryQuantities
   totalStart: number
   totalCurrent: number
   totalSold: number

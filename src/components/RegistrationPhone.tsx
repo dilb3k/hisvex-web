@@ -1,5 +1,6 @@
 'use client'
-import { t } from '@/lib/i18n'
+import { t, getLanguage } from '@/lib/i18n'
+import { translateApiMessage } from '@/lib/apiErrorMessages'
 import { TelegramIcon } from './TelegramIcon'
 import { useRegistrationPhone, type VerifiedRegistrationPhone } from '@/lib/useRegistrationPhone'
 
@@ -12,6 +13,6 @@ export function RegistrationPhone({ onVerified }: { onVerified: (value: Verified
       : <button type="button" disabled={flow.loading} onClick={() => void flow.prepare()} style={button}><TelegramIcon />{t(flow.loading ? 'loading' : 'registrationPhoneRetry')}</button>}
     {!flow.phone && <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '8px 0 0' }}>{t(flow.waiting ? 'registrationPhoneWaiting' : 'registrationPhoneHelp')}</p>}
     {flow.challenge && (flow.waiting || flow.phone) && <button type="button" onClick={() => void flow.prepare()} style={{ background: 'none', border: 0, padding: '8px 0 0', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' }}>{t('registrationPhoneReset')}</button>}
-    {flow.error && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 12 }}>{flow.error}</p>}
+    {flow.error && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 12 }}>{translateApiMessage(flow.error, getLanguage())}</p>}
   </div>
 }

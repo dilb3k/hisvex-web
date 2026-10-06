@@ -1,5 +1,7 @@
 'use client'
 
+import { QuantityStack } from '@/components/QuantityStack'
+import { sumQuantities, formatDecimal, formatInputMoney, parseInputMoney } from '@/lib/quantities'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/appStore'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
@@ -18,7 +20,7 @@ import {
   normalizeQuantityInput,
   parseQuantityInput,
 } from '@/lib/inventory'
-import { formatMoney, formatInputAmount, parseFormattedAmount, kpiCard, kpiIcon, overlay } from '@/lib/sharedStyles'
+import { formatMoney, kpiCard, kpiIcon, overlay } from '@/lib/sharedStyles'
 import { Check, Lock, Minus, Plus, Package, Scan, Search, ShoppingBag, ShoppingCart, Tag, Trash2, Wallet, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
@@ -286,7 +288,7 @@ export default function SalesPage() {
   }, [])
 
   const commitPrice = useCallback((productId: string, raw: string, listPrice: number) => {
-    const parsed = parseFormattedAmount(raw)
+    const parsed = parseInputMoney(raw)
     setPriceDrafts(prev => {
       const { [productId]: _removed, ...rest } = prev
       return rest
@@ -294,7 +296,7 @@ export default function SalesPage() {
     // Empty or unchanged means "no override" rather than "charge zero" — a
     // cleared field should read as the list price, not as a giveaway. Never
     // PIN-gated: returning to the list price isn't the sensitive direction.
-    if (!raw.trim() || parsed === listPrice) {
+    if (!raw.trim() || parsed === roundMoney(listPrice)) {
       setPriceOverrides(prev => {
         const { [productId]: _removed, ...rest } = prev
         return rest
@@ -521,18 +523,6 @@ export default function SalesPage() {
           )}
         </div>
       </div>
-
-      <p style={{
-        fontSize: 13,
-        color: 'var(--color-text-secondary)',
-        marginBottom: 16,
-        padding: '8px 12px',
-        borderRadius: 6,
-        background: 'var(--color-primary-soft)',
-        border: '1px solid var(--color-border)',
-      }}>
-        {t('salesHint')}
-      </p>
 
       {/* Genuine page-load failure — persistent banner with retry, replacing
           the old transient auto-clearing error text with no way to recover
@@ -794,10 +784,10 @@ export default function SalesPage() {
                           type="text"
                           inputMode="numeric"
                           aria-label={t('editPrice')}
-                          value={priceDrafts[item.productId] ?? formatInputAmount(String(unitPrice))}
+                          value={priceDrafts[item.productId] ?? formatInputMoney(formatDecimal(unitPrice, 2))}
                           onChange={e => setPriceDrafts(prev => ({
                             ...prev,
-                            [item.productId]: formatInputAmount(e.target.value),
+                            [item.productId]: formatInputMoney(e.target.value),
                           }))}
                           onBlur={e => commitPrice(item.productId, e.target.value, listPrice)}
                           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
@@ -930,7 +920,7 @@ export default function SalesPage() {
         onBarcodeDetected={(code) => addBarcodeProduct(code)}
         onManualInput={() => { setShowBarcodeScanner(false); setShowBarcode(true); setBarcodeError('') }}
         autoConfirm
-        cartCount={totalPieces}
+        cartCount={cartArray.length}
       />
 
       {/* PIN Verification — gates a per-line price change when a blockCode
@@ -1031,23 +1021,22 @@ export default function SalesPage() {
                   letterSpacing: -0.3,
                   overflowWrap: 'anywhere',
                 }}>
-                  {formatInputAmount(String(totals.total))}
+                  {formatDecimal(totals.total, 2, true)}
                 </span>
                 <span style={{
                   fontSize: 12, fontWeight: 700, flexShrink: 0,
                   color: 'var(--color-metric-revenue)', opacity: 0.75,
                 }}>so&apos;m</span>
               </div>
-              {/* Only shown when a line was renegotiated below its list
-                  price, so the normal sale keeps a single clean number. */}
+              {/* Show the signed change from the catalog price. */}
               {hasDiscount && (
                 <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', marginTop: 2 }}>
                   <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
                     {formatMoney(roundMoney(totals.subtotal + totals.lineDiscount))}
                   </span>
                   {' · '}
-                  <span style={{ color: 'var(--color-danger)' }}>
-                    −{formatMoney(totals.lineDiscount)}
+                  <span style={{ color: totals.lineDiscount < 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    {totals.lineDiscount < 0 ? '+' : '−'}{formatMoney(Math.abs(totals.lineDiscount))}
                   </span>
                 </div>
               )}
@@ -1065,7 +1054,7 @@ export default function SalesPage() {
                 color: 'var(--color-metric-qty)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
-                {formatQuantityValue(totalPieces, 'kg')}
+                <QuantityStack quantities={sumQuantities(cartArray)} />
               </div>
             </div>
           </div>

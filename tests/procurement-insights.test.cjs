@@ -1,3 +1,4 @@
+const { loadSource } = require('./helpers/load-source.cjs');
 const { test } = require('node:test'),
   assert = require('node:assert/strict'),
   fs = require('node:fs'),
@@ -151,7 +152,7 @@ function mount(component, props = {}, scope = 'full', initialMode = 'ok') {
     warning: 'orange',
     success: 'green',
   }
-  const types = { exports: {} }
+  const types = { exports: {}, require: () => loadSource('src/lib/quantities.ts') }
   vm.runInNewContext(compile('src/lib/procurementTypes.ts'), types)
   const context = {
     exports: {},
@@ -159,6 +160,10 @@ function mount(component, props = {}, scope = 'full', initialMode = 'ok') {
     clearTimeout,
     window: { addEventListener() {}, removeEventListener() {}, print() {} },
     require(name) {
+      if (name.endsWith('QuantityStack')) return { QuantityStack: 'QuantityStack' };
+      if (name.endsWith('/quantities') || name === './quantities') return loadSource('src/lib/quantities.ts');
+      if (name.endsWith('/inventory')) return loadSource('src/lib/inventory.ts');
+
       if (name === 'react') return hooks
       if (name === 'react/jsx-runtime') return require(name)
       if (name === 'react-native')

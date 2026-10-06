@@ -1,5 +1,7 @@
 'use client'
 
+import { QuantityStack } from '@/components/QuantityStack'
+import { sumQuantities, formatInputMoney, parseInputMoney } from '@/lib/quantities'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { inventoryApi, resolveImageUrl, clearApiCache } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
@@ -25,7 +27,7 @@ import { t } from '@/lib/i18n'
 import { PageHeader } from '@/components/PageHeader'
 import { ErrorBanner } from '@/components/StatusViews'
 import type { Product, InventoryItem, ProductUnit } from '@/lib/types'
-import { formatMoney, formatInputAmount, parseFormattedAmount, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
+import { formatMoney, overlay, kpiCard, kpiIcon } from '@/lib/sharedStyles'
 import { useEscapeToClose } from '@/lib/useEscapeKey'
 import { useAuthStore } from '@/lib/authStore'
 import { isBlockCodeDisabled } from '@/utils/blockCode'
@@ -222,6 +224,11 @@ export default function InventoryPage() {
     let start = 0, remaining = 0, sold = 0, revenue = 0, profit = 0
     for (const e of combinedData) { start += e.opening; remaining += e.remaining; sold += e.sold; revenue += e.revenue; profit += e.realizedProfit }
     return {
+      quantities: {
+        start: sumQuantities(combinedData.map(e => ({ quantity: e.opening, unit: e.unit }))),
+        current: sumQuantities(combinedData.map(e => ({ quantity: e.remaining, unit: e.unit }))),
+        sold: sumQuantities(combinedData.map(e => ({ quantity: e.sold, unit: e.unit }))),
+      },
       start: roundQty(start),
       remaining: roundQty(remaining),
       sold: roundQty(sold),
@@ -343,7 +350,7 @@ export default function InventoryPage() {
     // An overwritten revenue is authoritative. Profit is never entered — it is
     // always revenue minus the cost of the units sold, so every so'm taken off
     // the revenue comes straight off the profit.
-    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseFormattedAmount(revenueInput))
+    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseInputMoney(revenueInput))
     const newProfit = roundMoney(newRevenue - newSold * selectedEntry.buyPrice)
     return {
       prevSold: selectedEntry.sold,
@@ -404,12 +411,9 @@ export default function InventoryPage() {
     const neutralSoft = 'var(--color-border)'
     const neutralInk = 'var(--color-text-secondary)'
     const kpis = [
-      // No unit suffix on these three: they sum across products measured in
-      // different units, so "24.5 dona" would be wrong. formatQuantityValue
-      // with 'kg' just means "keep the decimals, drop the trailing zeros".
-      { icon: <Package size={18} />, label: t('start'), value: formatQuantityValue(totals.start, 'kg'), color: neutralInk, soft: neutralSoft },
-      { icon: <Archive size={18} />, label: t('remaining'), value: formatQuantityValue(totals.remaining, 'kg'), color: neutralInk, soft: neutralSoft },
-      { icon: <ShoppingCart size={18} />, label: t('sold'), value: formatQuantityValue(totals.sold, 'kg'), color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)' },
+      { icon: <Package size={18} />, label: t('start'), value: <QuantityStack quantities={totals.quantities.start} />, color: neutralInk, soft: neutralSoft },
+      { icon: <Archive size={18} />, label: t('remaining'), value: <QuantityStack quantities={totals.quantities.current} />, color: neutralInk, soft: neutralSoft },
+      { icon: <ShoppingCart size={18} />, label: t('sold'), value: <QuantityStack quantities={totals.quantities.sold} />, color: 'var(--color-metric-qty)', soft: 'var(--color-metric-qty-soft)' },
       { icon: <Wallet size={18} />, label: t('revenue'), value: formatMoney(totals.revenue), color: 'var(--color-metric-revenue)', soft: 'var(--color-metric-revenue-soft)' },
       { icon: <TrendingUp size={18} />, label: t('profit'), value: formatMoney(totals.profit), color: 'var(--color-metric-profit)', soft: 'var(--color-metric-profit-soft)' },
     ]
@@ -430,7 +434,7 @@ export default function InventoryPage() {
           </span>
           {!showStatsDetail ? (
             <span style={{ flex: 1, textAlign: 'right', fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', marginRight: 8 }}>
-              {t('remaining')}: {formatQuantityValue(totals.remaining, 'kg')}  ·  {t('sold')}: {formatQuantityValue(totals.sold, 'kg')}
+              {t('remaining')}: <QuantityStack quantities={totals.quantities.current} />  ·  {t('sold')}: <QuantityStack quantities={totals.quantities.sold} />
             </span>
           ) : null}
           {showStatsDetail ? <ChevronUp size={18} color="var(--color-text-secondary)" /> : <ChevronDown size={18} color="var(--color-text-secondary)" />}
@@ -588,13 +592,13 @@ export default function InventoryPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <input
                         type="text"
-                        inputMode="numeric"
+                        inputMode="decimal"
                         aria-label={t('expectedRevenue')}
                         value={p.isOverridden || revenueInput !== null
                           ? (revenueInput ?? '')
-                          : formatInputAmount(String(p.listRevenue))}
-                        onChange={(e) => setRevenueInput(formatInputAmount(e.target.value))}
-                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputAmount(String(p.listRevenue))) }}
+                          : formatInputMoney(String(p.listRevenue))}
+                        onChange={(e) => setRevenueInput(formatInputMoney(e.target.value))}
+                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputMoney(String(p.listRevenue))) }}
                         style={{
                           ...s.modalInput,
                           width: 130,

@@ -1,10 +1,14 @@
 'use client'
 
+import { QuantityStack } from '@/components/QuantityStack'
+import { getInventoryQuantities, addQuantities, sumQuantities, formatUnitQuantities, type UnitQuantities } from '@/lib/quantities'
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { inventoryApi } from '@/lib/api'
+import { ReportDownloadDialog } from '@/components/ReportDownloadDialog'
+import { inventoryApi, procurementApi } from '@/lib/api'
 import { useAppStore } from '@/lib/appStore'
 import { getBusinessDate } from '@/lib/businessDay'
 import {
+  getInventoryMetrics,
   resolveSellPrice,
   resolveBuyPrice,
   normalizeUnit,
@@ -61,11 +65,16 @@ interface ProductRankItem {
   unit: ProductUnit
   sold: number
   profit: number
+  revenue: number
 }
 
 type InventoryLineItem = {
   date?: string
   sold?: number
+  revenue?: number
+  lockedSold?: number
+  lockedRevenue?: number
+  lockedProfit?: number
   realizedProfit?: number
   startQuantity?: number
   openingQuantity?: number
@@ -78,24 +87,24 @@ type InventoryLineItem = {
 }
 
 function buildProductRankings(inventoryItems: InventoryLineItem[]): ProductRankItem[] {
-  const seen = new Map<string, { sold: number; profit: number; name: string; unit: ProductUnit }>()
+  const seen = new Map<string, { sold: number; profit: number; revenue: number; name: string; unit: ProductUnit }>()
   for (const item of inventoryItems) {
     const p = item.product
     if (!p) continue
     const id = p._id || p.id
     if (!id) continue
-    const opening = item.startQuantity ?? item.openingQuantity ?? 0
-    const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+    const metrics = getInventoryMetrics(item)
+    const sold = metrics.sold
     const cur = seen.get(id) ?? {
       sold: 0,
       profit: 0,
+      revenue: 0,
       name: p.name || 'Noma\'lum',
       unit: normalizeUnit(item.unit ?? p.unit),
     }
     cur.sold += sold
-    const sp = resolveSellPrice(item, p)
-    const bp = resolveBuyPrice(item, p)
-    cur.profit += item.realizedProfit ?? (sold * (sp - bp))
+    cur.profit += metrics.realizedProfit
+    cur.revenue += metrics.revenue
     seen.set(id, cur)
   }
   return Array.from(seen.entries()).map(([id, totals]) => ({
@@ -104,6 +113,7 @@ function buildProductRankings(inventoryItems: InventoryLineItem[]): ProductRankI
     unit: totals.unit,
     sold: roundQty(totals.sold),
     profit: roundMoney(totals.profit),
+    revenue: roundMoney(totals.revenue),
   }))
 }
 
@@ -113,13 +123,10 @@ function computeTotals(items: InventoryLineItem[]) {
   // distinct events that both count.
   let sold = 0, revenue = 0, profit = 0
   for (const item of items) {
-    const qty = item.currentQuantity ?? 0
-    const sp = resolveSellPrice(item, item.product)
-    const bp = resolveBuyPrice(item, item.product)
-    const soldQty = item.sold ?? Math.max((item.startQuantity ?? item.openingQuantity ?? 0) - qty, 0)
-    sold += soldQty
-    revenue += soldQty * sp
-    profit += item.realizedProfit ?? (soldQty * (sp - bp))
+    const metrics = getInventoryMetrics(item)
+    sold += metrics.sold
+    revenue += metrics.revenue
+    profit += metrics.realizedProfit
   }
 
   // Stock metrics (remaining pieces/value) are a POINT-IN-TIME snapshot, not
@@ -150,9 +157,10 @@ function computeTotals(items: InventoryLineItem[]) {
   }
 
   return {
-    sellableItems: sold + remaining, soldItems: sold, sellableValue: revenue + stockSellValue,
-    earnedRevenue: revenue, possibleProfit: profit + stockProfit, earnedProfit: profit,
-    remainingItems: remaining, stockValue: stockSellValue,
+    quantities: getInventoryQuantities(items),
+    sellableItems: roundQty(sold + remaining), soldItems: roundQty(sold), sellableValue: roundMoney(revenue + stockSellValue),
+    earnedRevenue: roundMoney(revenue), possibleProfit: roundMoney(profit + stockProfit), earnedProfit: roundMoney(profit),
+    remainingItems: roundQty(remaining), stockValue: roundMoney(stockSellValue),
   }
 }
 
@@ -171,18 +179,18 @@ function bucketLabelFor(key: string, unit: BucketUnit) {
 }
 
 function aggregateBuckets(items: InventoryLineItem[], unit: BucketUnit) {
-  const map = new Map<string, { revenue: number; profit: number; qty: number }>()
+  const map = new Map<string, { revenue: number; profit: number; qty: number; quantities: UnitQuantities }>()
   for (const item of items) {
     if (!item?.date) continue
     const key = bucketKeyFor(item.date, unit)
-    const sp = resolveSellPrice(item, item.product)
-    const bp = resolveBuyPrice(item, item.product)
-    const opening = item.startQuantity ?? item.openingQuantity ?? 0
-    const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-    const cur = map.get(key) ?? { revenue: 0, profit: 0, qty: 0 }
-    cur.revenue += soldQty * sp
-    cur.profit += item.realizedProfit ?? soldQty * (sp - bp)
-    cur.qty += soldQty
+    const metrics = getInventoryMetrics(item)
+    const cur = map.get(key) ?? { revenue: 0, profit: 0, qty: 0, quantities: { dona: 0, kg: 0 } }
+    cur.revenue += metrics.revenue
+    cur.profit += metrics.realizedProfit
+    cur.qty = roundQty(cur.qty + metrics.sold)
+    cur.revenue = roundMoney(cur.revenue)
+    cur.profit = roundMoney(cur.profit)
+    cur.quantities = addQuantities(cur.quantities, (item.unit ?? item.product?.unit) === 'kg' ? { dona: 0, kg: metrics.sold } : { dona: metrics.sold, kg: 0 })
     map.set(key, cur)
   }
   return map
@@ -241,11 +249,11 @@ function TrendChart({ items, bucketUnit, rangeFrom, rangeTo, currentKey, loading
   const buckets = useMemo(() => {
     const map = aggregateBuckets(items, bucketUnit)
     const keys = bucketKeysInRange(rangeFrom, rangeTo, bucketUnit)
-    return keys.map((key) => ({ key, ...(map.get(key) ?? { revenue: 0, profit: 0, qty: 0 }) }))
+    return keys.map((key) => ({ key, ...(map.get(key) ?? { revenue: 0, profit: 0, qty: 0, quantities: { dona: 0, kg: 0 } }) }))
   }, [items, bucketUnit, rangeFrom, rangeTo])
 
   const isEmpty = !loading && (items.length === 0 || buckets.length === 0)
-  const maxVal = Math.max(...buckets.map((b) => b[metric]), 1)
+  const maxValue = Math.max(...buckets.flatMap(b => metric === 'qty' ? [b.quantities.dona, b.quantities.kg] : [b[metric]]), 1)
 
   return (
     <div style={{ marginBottom: compact ? 0 : 14 }}>
@@ -280,7 +288,6 @@ function TrendChart({ items, bucketUnit, rangeFrom, rangeTo, currentKey, loading
               {buckets.map((b, i) => {
                 const val = b[metric]
                 const isCurrent = currentKey ? b.key === currentKey : i === buckets.length - 1
-                const heightPct = Math.max((val / maxVal) * 100, val > 0 ? 4 : 2)
                 const isActive = activeIdx === i
                 const edgeStart = i < buckets.length * 0.15
                 const edgeEnd = i > buckets.length * 0.85
@@ -303,15 +310,18 @@ function TrendChart({ items, bucketUnit, rangeFrom, rangeTo, currentKey, loading
                       }}>
                         <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{bucketLabelFor(b.key, bucketUnit)}</div>
                         <div style={{ fontSize: 'clamp(11px, 3vw, 13px)', fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                          {metric === 'qty' ? `${val} dona` : formatMoney(val)}
+                          {metric === 'qty' ? <QuantityStack quantities={b.quantities} /> : formatMoney(val)}
                         </div>
                       </div>
                     )}
-                    <div style={{
-                      width: '100%', height: `${heightPct}%`, borderRadius: '4px 4px 0 0',
-                      background: active.color, opacity: isCurrent ? 1 : 0.35,
-                      transition: 'height 0.3s ease, opacity 0.2s',
-                    }} />
+                    {(metric === 'qty' ? [b.quantities.dona, b.quantities.kg] : [val]).map((value, index) => (
+                      <div key={index} style={{
+                        flex: 1, height: `${maxValue > 0 ? Math.max(value / maxValue * 100, value > 0 ? 2 : 0) : 0}%`,
+                        marginLeft: index ? 2 : 0, borderRadius: '4px 4px 0 0',
+                        background: active.color, opacity: (isCurrent ? 1 : 0.35) * (index ? 0.65 : 1),
+                        transition: 'height 0.3s ease, opacity 0.2s',
+                      }} />
+                    ))}
                   </div>
                 )
               })}
@@ -471,6 +481,10 @@ export default function StatisticsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [showAllTime, setShowAllTime] = useState(false)
+  const [showDownload, setShowDownload] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportBusy = useRef(false)
+  const showToast = useAppStore(s => s.showToast)
   const [allTimeFrom, setAllTimeFrom] = useState(() => dayjs(getBusinessDate()).subtract(1, 'year').format('YYYY-MM-DD'))
   const [allTimeTo, setAllTimeTo] = useState(getBusinessDate)
   const [allTimeItems, setAllTimeItems] = useState<InventoryLineItem[] | null>(null)
@@ -557,23 +571,15 @@ export default function StatisticsPage() {
 
   const totals = useMemo(() => {
     const revenue = inventoryItems.reduce((s, item) => {
-      const sp = resolveSellPrice(item, item.product)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-      return s + soldQty * sp
+      return s + getInventoryMetrics(item).revenue
     }, 0)
     const profit = inventoryItems.reduce((s, item) => {
-      const sp = resolveSellPrice(item, item.product)
-      const bp = resolveBuyPrice(item, item.product)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-      return s + (item.realizedProfit ?? soldQty * (sp - bp))
+      return s + getInventoryMetrics(item).realizedProfit
     }, 0)
     const sold = inventoryItems.reduce((s, item) => {
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      return s + (item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0))
+      return s + getInventoryMetrics(item).sold
     }, 0)
-    return { revenue, profit, sold }
+    return { revenue: roundMoney(revenue), profit: roundMoney(profit), sold: roundQty(sold) }
   }, [inventoryItems])
 
   const overallTotals = useMemo(() => {
@@ -583,7 +589,7 @@ export default function StatisticsPage() {
 
   const margin = totals.revenue > 0 ? Math.round((totals.profit / totals.revenue) * 100) : 0
   const allProductStats = useMemo(() => buildProductRankings(inventoryItems), [inventoryItems])
-  const topProducts = useMemo(() => allProductStats.filter((p) => p.sold > 0).sort((a, b) => b.sold - a.sold || b.profit - a.profit), [allProductStats])
+  const topProducts = useMemo(() => allProductStats.filter((p) => p.sold > 0).sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name)), [allProductStats])
   // Exclude whatever is already showing in "Ko'p sotilgan" (top 5). Without
   // this, a shop with a small catalog (e.g. 6-8 products) would see the same
   // decent-selling product in BOTH rankings — sorting the full list ascending
@@ -593,9 +599,9 @@ export default function StatisticsPage() {
   // clearly not low sellers.
   const leastProducts = useMemo(() => {
     const topIds = new Set(topProducts.slice(0, 5).map((p) => p.id))
-    return allProductStats.filter((p) => !topIds.has(p.id)).sort((a, b) => a.sold - b.sold || a.profit - b.profit)
+    return allProductStats.filter((p) => !topIds.has(p.id)).sort((a, b) => a.revenue - b.revenue || a.name.localeCompare(b.name))
   }, [allProductStats, topProducts])
-  const maxLeastSold = useMemo(() => Math.max(...leastProducts.map((p) => p.sold), 1), [leastProducts])
+  const maxLeastSold = useMemo(() => Math.max(...leastProducts.map((p) => p.revenue), 1), [leastProducts])
   const allTimeTotals = useMemo(() => { if (!allTimeItems) return null; return computeTotals(allTimeItems) }, [allTimeItems])
   const allTimeBucketUnit: BucketUnit = useMemo(() => dayjs(allTimeTo).diff(dayjs(allTimeFrom), 'day') > 60 ? 'month' : 'day', [allTimeFrom, allTimeTo])
 
@@ -611,7 +617,7 @@ export default function StatisticsPage() {
     } finally { setAllTimeLoading(false) }
   }, [])
 
-  const handleDownload = async () => {
+  const handleDownload = async (assertActive: () => void) => {
     if (!inventoryItems.length) return
     // Real fix, not a styling pass: inventoryItems is one row per
     // (product, day) — range.from/range.to can span a whole month, so the
@@ -646,11 +652,11 @@ export default function StatisticsPage() {
       if (!id) continue
       const buy = resolveBuyPrice(item, p)
       const sell = resolveSellPrice(item, p)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
       const currentQty = Math.max(item.currentQuantity ?? 0, 0)
-      const soldQty = item.sold ?? Math.max(opening - currentQty, 0)
-      const revenue = (item as { revenue?: number }).revenue ?? soldQty * sell
-      const profit = item.realizedProfit ?? soldQty * (sell - buy)
+      const metrics = getInventoryMetrics(item)
+      const soldQty = metrics.sold
+      const revenue = metrics.revenue
+      const profit = metrics.realizedProfit
 
       const cur = byProduct.get(id) ?? {
         name: p?.name || 'Noma\'lum',
@@ -695,7 +701,7 @@ export default function StatisticsPage() {
     })
 
     const moneyCols = [3, 4, 6, 7, 9]
-    let totalSold = 0, totalRevenue = 0, totalProfit = 0, totalRemaining = 0, totalRemainingValue = 0
+    let totalRevenue = 0, totalProfit = 0, totalRemainingValue = 0
     let idx = 0
     const sortedProducts = Array.from(byProduct.values()).sort((a, b) => b.revenue - a.revenue)
     for (const p of sortedProducts) {
@@ -708,34 +714,33 @@ export default function StatisticsPage() {
 
       const row = sheet.addRow([
         idx, p.name, p.buy, p.sell,
-        formatQuantityValue(sold, p.unit), revenue, profit,
-        formatQuantityValue(remaining, p.unit), remainingValue,
+        formatQuantity(sold, p.unit), revenue, profit,
+        formatQuantity(remaining, p.unit), remainingValue,
       ])
-      moneyCols.forEach(col => { row.getCell(col).numFmt = '#,##0' })
+      moneyCols.forEach(col => { row.getCell(col).numFmt = '#,##0.##' })
       row.getCell(7).font = { bold: true, color: { argb: profit >= 0 ? 'FF15803D' : 'FFDC2626' } }
 
-      totalSold += sold
       totalRevenue += revenue
       totalProfit += profit
-      totalRemaining += remaining
       totalRemainingValue += remainingValue
     }
 
     const totalRow = sheet.addRow([
       '', 'Jami', '', '',
-      totalSold, totalRevenue, totalProfit,
-      totalRemaining, totalRemainingValue,
+      formatUnitQuantities(sumQuantities(sortedProducts.map(p => ({ quantity: p.sold, unit: p.unit })))), roundMoney(totalRevenue), roundMoney(totalProfit),
+      formatUnitQuantities(sumQuantities(sortedProducts.map(p => ({ quantity: p.remaining, unit: p.unit })))), roundMoney(totalRemainingValue),
     ])
     totalRow.eachCell(cell => {
       cell.font = { bold: true }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
     })
-    moneyCols.forEach(col => { totalRow.getCell(col).numFmt = '#,##0' })
+    moneyCols.forEach(col => { totalRow.getCell(col).numFmt = '#,##0.##' })
     totalRow.getCell(7).font = { bold: true, color: { argb: totalProfit >= 0 ? 'FF15803D' : 'FFDC2626' } }
 
     sheet.views = [{ state: 'frozen', ySplit: 1 }]
 
     const buffer = await workbook.xlsx.writeBuffer()
+    assertActive()
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -743,6 +748,28 @@ export default function StatisticsPage() {
     a.download = `hisobot-${range.from}-${range.to}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleReportDownload = async (report: 'statistics' | 'receipts') => {
+    if (exportBusy.current || isLocked) return
+    exportBusy.current = true
+    setExporting(true)
+    const token = useAuthStore.getState().token
+    const assertActive = () => { if (!token || useAuthStore.getState().token !== token) throw Error('Account changed') }
+    try {
+      assertActive()
+      if (report === 'statistics') await handleDownload(assertActive)
+      else {
+        const body = await procurementApi.export({ period: 'custom', ...range, report: 'receipts' }, 'xlsx')
+        assertActive()
+        const url = URL.createObjectURL(new Blob([body], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+        const a = document.createElement('a')
+        a.href = url; a.download = `kirimlar-${range.from}-${range.to}.xlsx`
+        a.click(); URL.revokeObjectURL(url)
+      }
+      setShowDownload(false)
+    } catch { if (useAuthStore.getState().token === token) showToast(t('reportDownloadError'), 'error') }
+    finally { exportBusy.current = false; setExporting(false) }
   }
 
   const handleOpenAllTime = useCallback(async () => {
@@ -758,7 +785,7 @@ export default function StatisticsPage() {
 
   function renderRankItem(item: ProductRankItem, index: number, isBlacklist: boolean, maxSold = 1) {
     const unsold = item.sold <= 0
-    const ratio = item.sold > 0 ? Math.min(item.sold / maxSold, 1) : 0
+    const ratio = item.revenue > 0 ? Math.min(item.revenue / maxSold, 1) : 0
     return (
       <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0' }}>
         <div style={{
@@ -770,8 +797,8 @@ export default function StatisticsPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-            <span style={{ fontSize: 13, fontWeight: 700, flexShrink: 0, color: item.profit < 0 ? 'var(--color-danger)' : item.sold <= 0 ? 'var(--color-text-tertiary)' : isBlacklist ? 'var(--color-warning)' : 'var(--color-primary)' }}>
-              {formatMoney(item.profit)}
+            <span title={t('soldValue')} style={{ fontSize: 13, fontWeight: 700, flexShrink: 0, color: item.revenue < 0 ? 'var(--color-danger)' : item.sold <= 0 ? 'var(--color-text-tertiary)' : isBlacklist ? 'var(--color-warning)' : 'var(--color-primary)' }}>
+              {formatMoney(item.revenue)}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
@@ -782,7 +809,7 @@ export default function StatisticsPage() {
           <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', marginTop: 6, overflow: 'hidden' }}>
             <div style={{
               width: `${ratio * 100}%`, height: '100%', borderRadius: 2, minHeight: ratio > 0 ? 2 : 0,
-              background: isBlacklist ? 'var(--color-danger)' : 'var(--color-metric-qty)',
+              background: isBlacklist ? 'var(--color-danger)' : 'var(--color-metric-revenue)',
               transition: 'width 0.4s ease',
             }} />
           </div>
@@ -802,8 +829,8 @@ export default function StatisticsPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
-            onClick={handleDownload}
-            disabled={!inventoryItems.length}
+            onClick={() => setShowDownload(true)}
+            disabled={exporting}
             className="btn btn-secondary"
             style={{ whiteSpace: 'nowrap' }}
           ><Download size={16} />{t('downloadStatistics')}</button>
@@ -877,7 +904,7 @@ export default function StatisticsPage() {
               {formatMoney(totals.revenue)}
             </div>
             <div style={{ position: 'relative', display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-              <span style={heroChip}>{t('soldPieces')}: {formatQuantityValue(totals.sold, 'kg')}</span>
+              <span style={heroChip}>{t('soldPieces')}: <QuantityStack quantities={getInventoryQuantities(inventoryItems).sold} /></span>
               <span style={heroChip}>{t('marginPercent')}: {margin}%</span>
             </div>
           </div>
@@ -917,13 +944,13 @@ export default function StatisticsPage() {
                 padding: 16, borderRadius: 14, border: '1px solid var(--color-border)', background: 'var(--color-surface)',
               }}>
                 {[
-                  { label: t('totalSellablePieces'), value: String(overallTotals.sellableItems) },
-                  { label: t('soldPieces'), value: String(overallTotals.soldItems) },
+                  { label: t('totalSellablePieces'), value: <QuantityStack quantities={overallTotals.quantities.sellable} /> },
+                  { label: t('soldPieces'), value: <QuantityStack quantities={overallTotals.quantities.sold} /> },
                   { label: t('totalSellValue'), value: formatMoney(overallTotals.sellableValue) },
                   { label: t('soldValue'), value: formatMoney(overallTotals.earnedRevenue) },
                   { label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), color: 'var(--color-metric-profit)' },
                   { label: t('earnedProfit'), value: formatMoney(overallTotals.earnedProfit), color: 'var(--color-metric-profit)' },
-                  { label: t('remainingPieces'), value: String(overallTotals.remainingItems) },
+                  { label: t('remainingPieces'), value: <QuantityStack quantities={overallTotals.quantities.current} /> },
                   { label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
                 ].map((item, i) => (
                   <div key={i}>
@@ -948,7 +975,8 @@ export default function StatisticsPage() {
               <TrendingUp size={18} color="var(--color-success)" />
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{t('topProductsLabel')}</h3>
             </div>
-            {topProducts.length > 0 ? topProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, false, topProducts[0]?.sold)) : <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '12px 0', margin: 0 }}>{t('noProductsPeriod')}</p>}
+            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 8px' }}>{t('rankingByRevenue')}</p>
+            {topProducts.length > 0 ? topProducts.slice(0, 5).map((item, i) => renderRankItem(item, i, false, topProducts[0]?.revenue)) : <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '12px 0', margin: 0 }}>{t('noProductsPeriod')}</p>}
           </div>
 
           {leastProducts.length > 0 && (
@@ -963,6 +991,8 @@ export default function StatisticsPage() {
           )}
         </>
       )}
+
+      <ReportDownloadDialog visible={showDownload} busy={exporting} canExportStatistics={!loading && !loadError && inventoryItems.length > 0} periodLabel={periodLabel} onSelect={report => { void handleReportDownload(report) }} onClose={() => setShowDownload(false)} />
 
       {showAllTime && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
@@ -1011,13 +1041,13 @@ export default function StatisticsPage() {
                 />
                 <div style={{ display: 'flex', flexWrap: 'wrap', marginTop: 14 }}>
                   {[
-                    { label: t('totalSellablePieces'), value: allTimeTotals.sellableItems },
-                    { label: t('soldPieces'), value: allTimeTotals.soldItems },
+                    { label: t('totalSellablePieces'), value: <QuantityStack quantities={allTimeTotals.quantities.sellable} /> },
+                    { label: t('soldPieces'), value: <QuantityStack quantities={allTimeTotals.quantities.sold} /> },
                     { label: t('totalSellValue'), value: formatMoney(allTimeTotals.sellableValue) },
                     { label: t('soldValue'), value: formatMoney(allTimeTotals.earnedRevenue) },
                     { label: t('potentialProfit'), value: formatMoney(allTimeTotals.possibleProfit), highlight: true },
                     { label: t('earnedProfit'), value: formatMoney(allTimeTotals.earnedProfit), highlight: true },
-                    { label: t('remainingPieces'), value: allTimeTotals.remainingItems },
+                    { label: t('remainingPieces'), value: <QuantityStack quantities={allTimeTotals.quantities.current} /> },
                     { label: t('remainingStockValue'), value: formatMoney(allTimeTotals.stockValue) },
                   ].map((item, i) => (
                     <div key={i} style={{ width: '50%', marginBottom: 12 }}>

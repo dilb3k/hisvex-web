@@ -3,6 +3,10 @@ import type { ProcurementReceipt, ProcurementSummary, ProcurementQuery, Procurem
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
+import { getLanguage } from './i18n'
+import { translateApiMessage } from './apiErrorMessages'
+
+const errorMessage = (message: string) => translateApiMessage(message, getLanguage())
 import { createManualMutationRegistry, isDurableManualMutation, isDefinitiveMutationRejection, type ManualIntent } from './manualMutationIntent'
 import type { AuthResponse, AuthSuccess, DashboardData, DailySnapshot, DatabaseStats, Debtor, InventoryItem, Product, SyncPayload, SyncResponse, User } from './types'
 import { getBusinessDate } from './businessDay'
@@ -150,13 +154,13 @@ const api = axios.create({
 const MAX_RETRIES = 2
 
 function manualRegistry(owner: string, epoch: number) {
-  const assert = () => { if (owner !== getQueueOwner() || epoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi') }
+  const assert = () => { if (owner !== getQueueOwner() || epoch !== authEpoch) throw Error(errorMessage('Hisob yoki sessiya o‘zgardi')) }
   const key = (slot: string) => `hisvex-manual-v1:${owner}:${procurementScope ? 'procurement' : 'full'}:${slot}`
   return createManualMutationRegistry({
     read: async slot => { const raw = localStorage.getItem(key(slot)); return raw ? JSON.parse(raw) as ManualIntent : null },
     write: async (slot, value) => { assert(); if (value) localStorage.setItem(key(slot), JSON.stringify(value)); else localStorage.removeItem(key(slot)) },
     lock: async (slot, work) => {
-      if (typeof navigator === 'undefined' || !navigator.locks) throw Error('Brauzer xavfsiz amal saqlovini qo‘llamaydi')
+      if (typeof navigator === 'undefined' || !navigator.locks) throw Error(errorMessage('Brauzer xavfsiz amal saqlovini qo‘llamaydi'))
       return await navigator.locks.request(key(slot), work)
     },
   }, () => crypto.randomUUID(), async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), n => n.toString(16).padStart(2, '0')).join(''), assert)
@@ -190,15 +194,16 @@ api.interceptors.response.use(
 )
 
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-  if ((config as any)._authEpoch !== undefined && (config as any)._authEpoch !== authEpoch) throw Error('Sessiya o‘zgardi')
+  config.headers['Accept-Language'] = getLanguage()
+  if ((config as any)._authEpoch !== undefined && (config as any)._authEpoch !== authEpoch) throw Error(errorMessage('Sessiya o‘zgardi'))
   ;(config as any)._authEpoch=authEpoch
-  if (config.headers['X-Account-ID'] && config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error('Hisob o‘zgardi')
+  if (config.headers['X-Account-ID'] && config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error(errorMessage('Hisob o‘zgardi'))
   if (getQueueOwner()) config.headers['X-Account-ID'] = getQueueOwner()
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) config.headers.delete('Content-Type')
   config.headers['X-Client-Protocol']='2'
   if (!config.headers['Idempotency-Key'] && isDurableManualMutation(config.method, config.url)) {
     const owner = getQueueOwner()
-    if (!owner) throw Error('Avval hisobga kiring')
+    if (!owner) throw Error(errorMessage('Avval hisobga kiring'))
     const registry = manualRegistry(owner, authEpoch)
     const slot = `${config.method}:${config.url}`
     const intent = await registry.claim(slot, { body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data, params: config.params })
@@ -216,7 +221,7 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     // Axios may have serialized data on a prior attempt. Recover the same
     // payload and identity rather than generating another sale ID.
     const data = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
-    if (!data || typeof data !== 'object') throw new Error('Amal ma’lumotlari noto‘g‘ri')
+    if (!data || typeof data !== 'object') throw new Error(errorMessage('Amal ma’lumotlari noto‘g‘ri'))
     data.idempotencyKey ??= data.id ?? crypto.randomUUID()
     config.headers['Idempotency-Key'] = data.idempotencyKey
     config.data = data
@@ -304,19 +309,19 @@ function handleSessionExpired(
 
   if (data && typeof data === 'object') {
     if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
-      return tag(new Error(data.error.message))
+      return tag(new Error(errorMessage(data.error.message)))
     }
     if ('message' in data && typeof data.message === 'string') {
-      return tag(new Error(data.message))
+      return tag(new Error(errorMessage(data.message)))
     }
   }
-  return tag(new Error('Avtorizatsiya tugagan. Qayta kiring.'))
+  return tag(new Error(errorMessage('Avtorizatsiya tugagan. Qayta kiring.')))
 }
 
 api.interceptors.response.use(
   async (response) => {
-    if ((response.config as any)._authEpoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
-    if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error('Hisob o‘zgardi')
+    if ((response.config as any)._authEpoch !== authEpoch) throw Error(errorMessage('Hisob yoki sessiya o‘zgardi'))
+    if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getQueueOwner()) throw new Error(errorMessage('Hisob o‘zgardi'))
     // Only a real protected response confirms a cached offline session. A
     // local GET cache hit, public login response, or stale preview does not.
     const confirmsSession = response.status >= 200 && response.status < 300 && response.data?.success !== false
@@ -359,8 +364,8 @@ api.interceptors.response.use(
   },
   async (error: AxiosError<ApiErrorBody>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
-    if (originalRequest && (originalRequest as any)._authEpoch !== authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
-    if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getQueueOwner()) return Promise.reject(new Error('Hisob o‘zgardi'))
+    if (originalRequest && (originalRequest as any)._authEpoch !== authEpoch) return Promise.reject(Error(errorMessage('Hisob yoki sessiya o‘zgardi')))
+    if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getQueueOwner()) return Promise.reject(new Error(errorMessage('Hisob o‘zgardi')))
     if (originalRequest && (!error.response || error.response.status >= 500 || (error.response.status === 404 && error.response.data?.success !== false))) backendWasUnavailable = true
     const manual = (originalRequest as any)?._manualIntent
     if (manual && isDefinitiveMutationRejection(error.response?.status, error.response?.data)) await manual.registry.acknowledge(manual.slot, manual.id)
@@ -385,7 +390,7 @@ api.interceptors.response.use(
       // Intent was persisted before dispatch. A failed response never
       // changes its ID or claims the server has committed it.
       const needsReview=queuedWriteNeedsReview(error)
-      const message=error.response?.data?.error?.message ?? error.response?.data?.message ?? 'Server amalni rad etdi'
+      const message=errorMessage(error.response?.data?.error?.message ?? error.response?.data?.message ?? 'Server amalni rad etdi')
       if(needsReview) await markQueuedWriteForReview(String(originalRequest.headers['Idempotency-Key']),message,String(originalRequest.headers['X-Account-ID']))
       return { data: { queued: true, needsReview, message:needsReview?message:undefined }, status: 202, statusText: 'Queued; awaiting confirmation', headers: {}, config: originalRequest }
     }
@@ -396,7 +401,7 @@ api.interceptors.response.use(
       const refreshingToken=apiRefreshToken
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
-          const res = await rawAxios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          const res = await rawAxios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS, headers: { 'Accept-Language': getLanguage() } })
           if(refreshEpoch!==authEpoch) return 'changed' as const
           const body = res.data
           const data = body && typeof body === 'object' && 'success' in body && 'data' in body ? body.data : body
@@ -414,8 +419,8 @@ api.interceptors.response.use(
         }
       })().finally(() => { if(refreshEpoch===authEpoch) refreshPromise = null }))
       return pending.then((result) => {
-        if(refreshEpoch!==authEpoch || result==='changed') return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
-        if(result==='network') return Promise.reject(Object.assign(Error('Tokenni yangilash uchun server bilan aloqa yo‘q'),{code:'REFRESH_NETWORK_ERROR'}))
+        if(refreshEpoch!==authEpoch || result==='changed') return Promise.reject(Error(errorMessage('Hisob yoki sessiya o‘zgardi')))
+        if(result==='network') return Promise.reject(Object.assign(Error(errorMessage('Tokenni yangilash uchun server bilan aloqa yo‘q')),{code:'REFRESH_NETWORK_ERROR'}))
         if (result === 'failed') {
           return Promise.reject(handleSessionExpired(error))
         }
@@ -429,10 +434,10 @@ api.interceptors.response.use(
     }
 
     if (error.code === 'ECONNABORTED') {
-      return Promise.reject(new Error("So'rov vaqti tugadi. Internet aloqasini tekshiring."))
+      return Promise.reject(new Error(errorMessage("So'rov vaqti tugadi. Internet aloqasini tekshiring.")))
     }
     if (error.code === 'ERR_NETWORK') {
-      return Promise.reject(new Error('Tarmoq xatoligi. Server bilan aloqa yo\'q.'))
+      return Promise.reject(new Error(errorMessage('Tarmoq xatoligi. Server bilan aloqa yo\'q.')))
     }
     const data = error.response?.data
     let message: string
@@ -452,7 +457,7 @@ api.interceptors.response.use(
     } else {
       message = error.message || 'API xatoligi'
     }
-    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status, code,
+    return Promise.reject(Object.assign(new Error(errorMessage(message)), { status: error.response?.status, code,
       requiresReview: originalRequest && isOfflineQueuable(originalRequest) ? queuedWriteNeedsReview(error) : undefined }))
   },
 )
@@ -629,7 +634,7 @@ export function flushOfflineQueueOnStartup() {
   return flushOfflineQueue(async (item) => {
     const response = await api({ method: item.method, url: item.url, data: item.data, headers: { 'X-Account-ID': item.owner }, _queueReplay: true } as any)
     if (response.status === 202 || response.data?.queued || response.data?.success === false) {
-      throw Object.assign(Error('Server tasdig‘i hali kelmadi'), { status: 409, code: 'OPERATION_IN_PROGRESS', requiresReview: false })
+      throw Object.assign(Error(errorMessage('Server tasdig‘i hali kelmadi')), { status: 409, code: 'OPERATION_IN_PROGRESS', requiresReview: false })
     }
   })
 }
@@ -652,3 +657,22 @@ export const procurementApi = {
 }
 
 export default api
+
+
+export type AdminPayment = {
+  id: string; userId: string; username: string | null; phone: string | null;
+  telegramUserId: string; telegramUsername?: string; tier: 'bor' | 'pro'; durationMonths: number;
+  amount: number; method: 'manual_card' | 'click'; status: 'pending' | 'provisioned' | 'approved' | 'completed' | 'rejected' | 'cancelled';
+  createdAt: string; approvedAt: string | null; approvedBy: string | null; rejectedReason: string | null;
+  needsReconciliation: boolean; reference: string | null; hasReceipt: boolean; receiptAmount: number | null;
+  sender: { name: string; card: string } | null;
+}
+export type PaymentHistoryFilters = { q?: string; status?: string; method?: string; tier?: string; from?: string; to?: string }
+export type PaymentHistory = { items: AdminPayment[]; summary: { total: number; settledCount: number; settledAmount: number; pendingCount: number; pendingAmount: number; rejectedCount: number }; page: number; totalPages: number }
+export const adminPaymentsApi = {
+  list: async (params: PaymentHistoryFilters & {page: number; limit: number}) => (await api.get<PaymentHistory>('/admin/payments', {params})).data,
+  receipt: async (id: string) => {
+    const response = await api.get<ArrayBuffer>(`/admin/payments/${encodeURIComponent(id)}/receipt`, {responseType: 'arraybuffer'})
+    return {body: response.data, mime: String(response.headers['content-type'] || 'image/webp')}
+  },
+}
