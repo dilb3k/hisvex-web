@@ -1,5 +1,6 @@
 'use client'
 
+import { ProcurementReports } from '@/components/ProcurementInsights'
 import { QuantityStack } from '@/components/QuantityStack'
 import { getInventoryQuantities, addQuantities, sumQuantities, formatUnitQuantities, type UnitQuantities } from '@/lib/quantities'
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
@@ -475,6 +476,7 @@ function StatsLocked() {
 }
 
 export default function StatisticsPage() {
+  const [section, setSection] = useState<'statistics' | 'receipts'>('statistics')
   const [period, setPeriod] = useState<Period>('daily')
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [inventoryItems, setInventoryItems] = useState<InventoryLineItem[]>([])
@@ -818,10 +820,17 @@ export default function StatisticsPage() {
     )
   }
 
-  if (isLocked) return <StatsLocked />
+  const sectionTabs = <div role="group" aria-label="Statistika bo‘limlari" style={{ display: 'flex', gap: 6, padding: 4, marginBottom: 18, borderRadius: 14, border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+    {(['statistics', 'receipts'] as const).map(value => <button key={value} type="button" aria-pressed={section === value} onClick={() => setSection(value)} style={{ flex: 1, minHeight: 44, padding: '10px 12px', border: 0, borderRadius: 10, fontWeight: 700, cursor: 'pointer', color: section === value ? '#fff' : 'var(--color-text-secondary)', background: section === value ? 'var(--color-primary)' : 'transparent' }}>{value === 'statistics' ? t('statistics') : 'Kirimlar tarixi'}</button>)}
+  </div>
+
+  if (section === 'receipts') return <div style={{ maxWidth: 780, margin: '0 auto' }}>{sectionTabs}<ProcurementReports {...getPeriodRange(period, selectedDate)} /></div>
+
+  if (isLocked) return <div style={{ maxWidth: 780, margin: '0 auto' }}>{sectionTabs}<StatsLocked /></div>
 
   return (
     <div style={{ maxWidth: 780, margin: '0 auto' }}>
+      {sectionTabs}
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <div>
