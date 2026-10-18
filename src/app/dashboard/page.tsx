@@ -1,6 +1,6 @@
 'use client'
 
-import { ProcurementReports } from '@/components/ProcurementInsights'
+import { ProcurementReports } from '@/components/ProcurementReports'
 import { QuantityStack } from '@/components/QuantityStack'
 import { getInventoryQuantities, addQuantities, sumQuantities, formatUnitQuantities, type UnitQuantities } from '@/lib/quantities'
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'

@@ -1,0 +1,5 @@
+simulation: hisvex-procurement-reports
+routing: path
+mocks:
+  - routeKey: api
+    path: ../mocks/procurement-read/config.yaml
