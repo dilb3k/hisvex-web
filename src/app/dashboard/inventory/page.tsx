@@ -1,5 +1,7 @@
 'use client'
 
+import { inventoryAdjustment } from '@/lib/inventoryAdjustment'
+
 import { QuantityStack } from '@/components/QuantityStack'
 import { sumQuantities, formatInputMoney, parseInputMoney } from '@/lib/quantities'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
@@ -36,6 +38,7 @@ interface EnrichedItem {
   product: Product
   inv: InventoryItem | undefined
   unit: ProductUnit
+  maxCurrent: number
   opening: number
   current: number
   remaining: number
@@ -186,20 +189,17 @@ export default function InventoryPage() {
       const sellPrice = resolveSellPrice(item, product)
       const buyPrice = resolveBuyPrice(item, product)
       const unit = normalizeUnit(item.unit ?? (product as Product).unit)
-      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const maxCurrent = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const opening = roundQty(maxCurrent + (item.lockedSold ?? 0))
       const current = roundQty(item.currentQuantity ?? 0)
       const remaining = roundQty(Math.max(current, 0))
-      const sold = item.sold ?? roundQty(Math.max(opening - current, 0))
-      // Server figures win when present: units sold at a negotiated price are
-      // valued in the entry's locked accumulators, which sold x list price
-      // cannot reproduce.
-      const revenue = item.revenue ?? roundMoney(sold * sellPrice)
-      const realizedProfit = item.realizedProfit ?? roundMoney(sold * (sellPrice - buyPrice))
+      const metrics = inventoryAdjustment({ ...item, sellPrice, buyPrice }, current)
+      const { sold, revenue, realizedProfit } = metrics
       const stockSellValue = roundMoney(remaining * sellPrice)
       const unitProfit = sellPrice - buyPrice
       result.push({
         product: product as Product, inv: item, unit,
-        opening, current, remaining, sold, revenue, realizedProfit,
+        opening, maxCurrent, current, remaining, sold, revenue, realizedProfit,
         stockSellValue, unitProfit, sellPrice, buyPrice,
       })
     }
@@ -250,10 +250,10 @@ export default function InventoryPage() {
   const rawQtyInput = selectedEntry
     ? parseQuantityInput(currentQtyInput, selectedEntry.unit)
     : 0
-  const overCount = !!selectedEntry && isEditable && qtyGreaterThan(rawQtyInput, selectedEntry.opening)
+  const overCount = !!selectedEntry && isEditable && qtyGreaterThan(rawQtyInput, selectedEntry.maxCurrent)
 
   const execSave = async () => {
-    if (!selectedEntry || !isEditable) return
+    if (!selectedEntry || !isEditable || saving || !preview || preview.invalidRevenue || (preview.soldNow === 0 && !preview.isOverridden)) return
     if (overCount) return
     setSaving(true)
     try {
@@ -261,7 +261,7 @@ export default function InventoryPage() {
       // to the API at the point it gets applied/saved, mirroring mobile's
       // clampCurrentQuantity exactly, so a bad value can never persist even if
       // the inline check above is somehow bypassed.
-      const newQty = clampCurrentQuantity(parseQuantityInput(currentQtyInput, selectedEntry.unit), selectedEntry.opening)
+      const newQty = clampCurrentQuantity(parseQuantityInput(currentQtyInput, selectedEntry.unit), selectedEntry.maxCurrent)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
       const statedRevenue = preview?.isOverridden ? preview.newRevenue : undefined
       const response = await inventoryApi.bulkUpdate([{
@@ -274,18 +274,7 @@ export default function InventoryPage() {
       clearApiCache()
       setItems((prev) => prev.map((item) => {
         if (item.productId !== productId && item.product?._id !== productId) return item
-        const opening = item.startQuantity ?? item.openingQuantity ?? 0
-        const newSold = roundQty(Math.max(opening - newQty, 0))
-        const sp = resolveSellPrice(item, item.product)
-        const bp = resolveBuyPrice(item, item.product)
-        const revenue = statedRevenue ?? roundMoney(newSold * sp)
-        return {
-          ...item,
-          currentQuantity: newQty,
-          sold: newSold,
-          revenue,
-          realizedProfit: roundMoney(revenue - newSold * bp),
-        }
+        return { ...item, ...inventoryAdjustment({ ...item, sellPrice: resolveSellPrice(item, item.product), buyPrice: resolveBuyPrice(item, item.product) }, newQty, statedRevenue) }
       }))
       await refreshAll()
       setSaved(true)
@@ -345,25 +334,14 @@ export default function InventoryPage() {
   const preview = useMemo(() => {
     if (!selectedEntry || !isEditable || overCount) return null
     const newCurrent = parseQuantityInput(currentQtyInput, selectedEntry.unit)
-    const newSold = roundQty(Math.max(selectedEntry.opening - newCurrent, 0))
-    const listRevenue = roundMoney(newSold * selectedEntry.sellPrice)
-    // An overwritten revenue is authoritative. Profit is never entered — it is
-    // always revenue minus the cost of the units sold, so every so'm taken off
-    // the revenue comes straight off the profit.
-    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseInputMoney(revenueInput))
-    const newProfit = roundMoney(newRevenue - newSold * selectedEntry.buyPrice)
+    const input = { ...selectedEntry.inv, currentQuantity: selectedEntry.current, sellPrice: selectedEntry.sellPrice, buyPrice: selectedEntry.buyPrice }
+    const next = inventoryAdjustment(input, newCurrent, revenueInput === null ? undefined : parseInputMoney(revenueInput))
+    const { sold: newSold, revenue: newRevenue, realizedProfit: newProfit, listRevenue } = next
     return {
+      invalidRevenue: newSold === 0 && newRevenue > 0,
       prevSold: selectedEntry.sold,
       newSold,
-      // What THIS edit does, as opposed to the day totals around it.
-      //
-      // The maths was never wrong — remaining is always measured against the
-      // opening quantity, which is what makes a mid-day recount work at all —
-      // but the panel only ever showed the day totals. Typing 87 over a
-      // remaining of 88 put "19 sold" on screen when one single unit had just
-      // been sold, and 19 is the number that catches the eye. The delta is now
-      // stated outright so the two readings can't be confused.
-      soldNow: roundQty(newSold - selectedEntry.sold),
+      soldNow: next.soldNow,
       revenueNow: roundMoney(newRevenue - selectedEntry.revenue),
       profitNow: roundMoney(newProfit - selectedEntry.realizedProfit),
       listRevenue,
@@ -545,6 +523,7 @@ export default function InventoryPage() {
               )}
               {p && (
                 <div style={s.previewBox}>
+                  {p.invalidRevenue && <p role="alert" style={{ color: 'var(--color-danger)' }}>{t('revenueRequiresSales')}</p>}
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
 
                   {/* What this one edit does, stated first and on its own.
@@ -582,7 +561,7 @@ export default function InventoryPage() {
                     {t('dayTotals')}
                   </div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.newSold, selectedEntry.unit)}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.soldNow, selectedEntry.unit)}</span></div>
                   {/* Editable: the shop often takes a different amount than
                       the list price implies. Profit is deliberately NOT
                       editable — it is always revenue minus the cost of the
@@ -594,6 +573,7 @@ export default function InventoryPage() {
                         type="text"
                         inputMode="decimal"
                         aria-label={t('expectedRevenue')}
+                        aria-invalid={p.invalidRevenue}
                         value={p.isOverridden || revenueInput !== null
                           ? (revenueInput ?? '')
                           : formatInputMoney(String(p.listRevenue))}
@@ -633,7 +613,7 @@ export default function InventoryPage() {
             <button onClick={closeModal} className="btn btn-secondary">{t('back')}</button>
             {!isPastDate && (
               <button
-                onClick={handleSave} disabled={saving || overCount}
+                onClick={handleSave} disabled={saving || overCount || !p || p.invalidRevenue || (p.soldNow === 0 && !p.isOverridden)}
                 className="btn btn-primary"
                 style={saved
                   ? { display: 'none' }

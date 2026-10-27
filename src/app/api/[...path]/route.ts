@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // primary, Render backup) now only ever get called from this Node runtime;
 // the browser only ever talks to this same-origin /api/* path.
 const PRIMARY_URL = process.env.BACKEND_PRIMARY_URL || 'https://hisvex-api-production.up.railway.app/api'
-const BACKUP_URL = process.env.BACKEND_BACKUP_URL || 'https://hisvex-api.onrender.com/api'
+const BACKUP_URL = process.env.BACKEND_BACKUP_URL || 'https://comp-bar-server-bk7z.onrender.com/api'
 
 const DEFAULT_TIMEOUT_MS = 10000
 const HEAVY_TIMEOUT_MS = 60000
