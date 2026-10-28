@@ -1,5 +1,7 @@
 'use client'
 
+import { findProductByBarcode } from '@/lib/barcodes'
+
 import { QuantityStack } from '@/components/QuantityStack'
 import { sumQuantities, formatDecimal, formatInputMoney, parseInputMoney } from '@/lib/quantities'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
@@ -140,6 +142,7 @@ export default function SalesPage() {
     const map: Record<string, Product> = {}
     for (const p of products) {
       map[p._id] = p
+      if (p.localId) map[p.localId] = p
     }
     return map
   }, [products])
@@ -378,21 +381,22 @@ export default function SalesPage() {
     const trimmed = code.trim()
     if (!trimmed) return null
 
-    const product = productsRef.current.find(p => p.barcodes?.includes(trimmed))
+    const product = findProductByBarcode(productsRef.current, trimmed)
     if (!product) return t('barcodeNotFound') || 'Barcode bo\'yicha mahsulot topilmadi'
 
-    const invItem = inventoryItemsRef.current.find(i => i.productId === product._id)
+    const invItem = inventoryItemsRef.current.find(i => i.productId === (product.localId ?? product._id) || i.productId === product._id)
     if (!invItem || invItem.currentQuantity <= 0) return t('noStock')
 
+    const productId = invItem.productId
     const unit = normalizeUnit(invItem.unit ?? product.unit)
-    const inCart = cartRef.current[product._id] || 0
+    const inCart = cartRef.current[productId] || 0
     if (!qtyGreaterThan(invItem.currentQuantity, inCart)) return t('maxStockReached')
 
     setCart(prev => {
-      const current = prev[product._id] || 0
-      const next = roundQty(current + stepFor(unit))
+      const current = prev[productId] || 0
+      const next = roundQty(Math.min(current + stepFor(unit), invItem.currentQuantity))
       if (qtyGreaterThan(next, invItem.currentQuantity)) return prev
-      return { ...prev, [product._id]: next }
+      return { ...prev, [productId]: next }
     })
     return null
   }, [])

@@ -1,5 +1,7 @@
 'use client'
 
+import { subscriptionPlans, subscriptionPriceLines, subscriptionBotUrl } from '@/lib/subscriptionPlans'
+
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/authStore'
@@ -783,18 +785,8 @@ export default function SettingsPage() {
 
               {/* Plan Cards: Bor & Pro */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[
-                  {
-                    key: 'bor', label: t('planBor'), price: t('planBorPrice'),
-                    color: '#10B981', bg: 'rgba(16,185,129,0.08)',
-                    features: ['Ombor hisobi', 'Statistika', 'Savdo', '100 tagacha mahsulot'],
-                  },
-                  {
-                    key: 'pro', label: t('planPro'), price: t('planProPrice'),
-                    color: '#7C3AED', bg: 'rgba(124,58,237,0.08)',
-                    features: ['Ombor hisobi', 'Statistika', 'Savdo', 'Cheksiz mahsulotlar'],
-                  },
-                ].map((plan) => {
+                {subscriptionPlans.map((item) => {
+                  const plan = { ...item, label: t(item.key === 'tekin' ? 'planFree' : item.key === 'bor' ? 'planBor' : 'planPro'), price: subscriptionPriceLines(item.prices, getLanguage()), bg: `${item.color}15`, features: getLanguage() === 'ru' ? item.ru : item.uz }
                   const isActive = userTier === plan.key
                   const isSuperAdmin = user?.role === 'superAdmin'
                   return (
@@ -814,7 +806,7 @@ export default function SettingsPage() {
                         </div>
                       )}
                       <div style={{ fontSize: 16, fontWeight: 700, color: plan.color }}>{plan.label}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: plan.color, marginTop: 4, marginBottom: 10 }}>
+                      <div style={{ fontSize: 14, lineHeight: 1.7, fontWeight: 700, color: plan.color, marginTop: 4, marginBottom: 10 }}>
                         {plan.price}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -824,32 +816,9 @@ export default function SettingsPage() {
                           </div>
                         ))}
                       </div>
-                      {!isActive && plan.key === 'bor' && (
-                        <button
-                          onClick={() => window.open('https://t.me/hisvex_bot', '_blank', 'noopener,noreferrer')}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                            border: 'none', background: `${plan.color}15`,
-                            color: plan.color, cursor: 'pointer',
-                          }}
-                        >
-                          <MessageCircle size={14} />
-                          {t('contactAdmin')}
-                        </button>
-                      )}
-                      {!isActive && plan.key === 'pro' && !isSuperAdmin && (
-                        <button
-                          onClick={() => window.open('https://t.me/hisvex_bot', '_blank', 'noopener,noreferrer')}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                            border: `1px solid ${plan.color}40`, background: `${plan.color}15`,
-                            color: plan.color, cursor: 'pointer',
-                          }}
-                        >
-                          <MessageCircle size={14} />
-                          {t('contactAdmin')}
+                      {plan.key !== 'tekin' && !isSuperAdmin && (
+                        <button onClick={() => { window.open(subscriptionBotUrl, '_blank', 'noopener,noreferrer') }} className="btn btn-primary" style={{ width: '100%' }}>
+                          <MessageCircle size={14} /> {t('buySubscription')}
                         </button>
                       )}
                       {plan.key === 'pro' && isSuperAdmin && (
