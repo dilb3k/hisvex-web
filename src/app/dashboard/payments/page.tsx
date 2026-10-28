@@ -132,7 +132,7 @@ function PaymentDetails({
     ],
     [
       'paymentMethod',
-      payment.method === 'click' ? 'Click' : t('paymentManual'),
+      payment.method === 'tezcheck' ? 'TezCheck' : payment.method === 'click' ? 'Click' : t('paymentManual'),
     ],
     ['paymentCreated', dateTime(payment.createdAt)],
     ...(payment.approvedAt
@@ -426,6 +426,7 @@ export default function PaymentHistoryPage() {
               onChange={(e) => updateFilter('method', e.target.value)}
             >
               <option value="">{t('paymentAllMethods')}</option>
+              <option value="tezcheck">TezCheck</option>
               <option value="manual_card">{t('paymentManual')}</option>
               <option value="click">Click</option>
             </select>
@@ -548,7 +549,7 @@ export default function PaymentHistoryPage() {
                       </td>
                       <td>
                         <span className={styles.method}>
-                          {payment.method === 'click'
+                          {payment.method === 'tezcheck' ? 'TezCheck' : payment.method === 'click'
                             ? 'Click'
                             : t('paymentManual')}
                         </span>

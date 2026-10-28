@@ -662,7 +662,7 @@ export default api
 export type AdminPayment = {
   id: string; userId: string; username: string | null; phone: string | null;
   telegramUserId: string; telegramUsername?: string; tier: 'bor' | 'pro'; durationMonths: number;
-  amount: number; method: 'manual_card' | 'click'; status: 'pending' | 'provisioned' | 'approved' | 'completed' | 'rejected' | 'cancelled';
+  amount: number; method: 'manual_card' | 'click' | 'tezcheck'; status: 'pending' | 'provisioned' | 'approved' | 'completed' | 'rejected' | 'cancelled';
   createdAt: string; approvedAt: string | null; approvedBy: string | null; rejectedReason: string | null;
   needsReconciliation: boolean; reference: string | null; hasReceipt: boolean; receiptAmount: number | null;
   sender: { name: string; card: string } | null;

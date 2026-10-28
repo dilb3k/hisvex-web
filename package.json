@@ -17,7 +17,7 @@
     "dayjs": "^1.11.13",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.487.0",
-    "next": "15.5.24",
+    "next": "^15.5.28",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zustand": "^5.0.4"
@@ -27,7 +27,7 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "eslint": "^9",
-    "eslint-config-next": "15.5.24",
+    "eslint-config-next": "^15.5.28",
     "fake-indexeddb": "^6.2.5",
     "typescript": "^5.8.3"
   },
