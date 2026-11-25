@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Ping standby backend
         run: curl --fail --silent --show-error --max-time 90 --retry 2 --retry-delay 10 https://hisvex-api-cr2x.onrender.com/api/health
+      # The Telegram bot runs in webhook mode on a free web service, so it
+      # sleeps too. Waking it also keeps its reminder cron running.
+      - name: Ping Telegram bot
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 --retry-delay 10 https://hisvex-bot-encx-k75s.onrender.com/health
       - name: Report primary status
         run: |
           code=$(curl --silent --output /dev/null --max-time 20 --write-out '%{http_code}' https://hisvex-api-production.up.railway.app/api/health || true)
