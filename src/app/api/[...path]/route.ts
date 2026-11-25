@@ -21,6 +21,13 @@ const AUTH_TIMEOUT_MS = 30000
 // would be.
 let primaryDownUntil = 0
 const PRIMARY_COOLDOWN_MS = 60_000
+// While primary is marked down, it is re-probed this often with a cheap
+// GET /health instead of risking a real user request on a dead host.
+const PRIMARY_PROBE_COOLDOWN_MS = 15_000
+const PRIMARY_PROBE_TIMEOUT_MS = 3000
+// Render's free plan sleeps when idle; a cold start can take ~50s, so the
+// backup gets a longer budget than the primary.
+const BACKUP_MIN_TIMEOUT_MS = 45000
 
 // Gateway statuses may also carry an explicit application rejection, such
 // as OTP_DELIVERY_FAILED. Preserve that known outcome instead of hiding it
@@ -133,6 +140,15 @@ function reportFailoverEvent(authHeader: string | null) {
   }).catch(() => {})
 }
 
+// Cheap liveness check of the primary, used once the failure cooldown has
+// lapsed. Only a clean 200 counts: Railway's edge answers 404/502/503 when
+// the app is gone, and those must keep traffic on the backup.
+async function probePrimary(): Promise<boolean> {
+  const res = await attemptOnce(`${PRIMARY_URL}/health`, 'GET', new Headers(), undefined, PRIMARY_PROBE_TIMEOUT_MS)
+  if (res?.body) await res.body.cancel().catch(() => {})
+  return res?.status === 200
+}
+
 async function fetchWithFailover(
   path: string,
   method: string,
@@ -141,7 +157,19 @@ async function fetchWithFailover(
   timeoutMs: number,
 ): Promise<{ res: Response | null; usedBackup: boolean }> {
   const replaySafe = ['GET', 'HEAD', 'OPTIONS'].includes(method)
-  const skipPrimary = Date.now() < primaryDownUntil
+  const bare = path.split('?', 1)[0]
+  const backupTimeoutMs = Math.max(timeoutMs, BACKUP_MIN_TIMEOUT_MS)
+  let skipPrimary = Date.now() < primaryDownUntil
+
+  // Cooldown lapsed but primary was last seen down: confirm it is back
+  // before sending a real request, so users never wait on a dead primary.
+  if (!skipPrimary && primaryDownUntil !== 0) {
+    if (await probePrimary()) primaryDownUntil = 0
+    else {
+      primaryDownUntil = Date.now() + PRIMARY_PROBE_COOLDOWN_MS
+      skipPrimary = true
+    }
+  }
 
   if (!skipPrimary) {
     const res = await attemptOnce(`${PRIMARY_URL}${path}`, method, headers, body, timeoutMs)
@@ -161,8 +189,9 @@ async function fetchWithFailover(
       }
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
       reportFailoverEvent(headers.get('authorization'))
-      // Platform 404 means the app never saw the request, so a login may retry.
-      if (!replaySafe && !isSessionLogin(path.split('?', 1)[0])) return { res: new Response(bodyBuf, { status: res.status, statusText: res.statusText, headers: res.headers }), usedBackup: false }
+      // The platform edge answered because no app instance exists, so the
+      // application never saw this request: replaying it, even a write, on
+      // the backup cannot duplicate anything.
     } else if (res && !isFailoverTriggeringStatus(res.status)) {
       primaryDownUntil = 0
       return { res, usedBackup: false }
@@ -171,15 +200,14 @@ async function fetchWithFailover(
       // A login that got an explicit gateway rejection (502/503/504) was never
       // processed by the app, so it is safe to retry on backup. A timeout
       // (res === null) stays non-replayable: the primary may have handled it.
-      const gatewayRejectedLogin = res !== null && isSessionLogin(path.split('?', 1)[0])
+      const gatewayRejectedLogin = res !== null && isSessionLogin(bare)
       if (!replaySafe && !gatewayRejectedLogin) return { res, usedBackup: false }
       if (res?.body) await res.body.cancel().catch(() => {})
-      primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
       reportFailoverEvent(headers.get('authorization'))
     }
   }
 
-  const res = await attemptOnce(`${BACKUP_URL}${path}`, method, headers, body, timeoutMs)
+  const res = await attemptOnce(`${BACKUP_URL}${path}`, method, headers, body, backupTimeoutMs)
   return { res, usedBackup: true }
 }
 
@@ -224,6 +252,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
 
   const responseBody = method === 'HEAD' || [204,205,304].includes(res.status) ? null : await res.arrayBuffer()
   const responseHeaders = forwardResponseHeaders(res)
+  responseHeaders.set('x-hisvex-backend', usedBackup ? 'backup' : 'primary')
   return new NextResponse(responseBody, { status: res.status, headers: responseHeaders })
 }
 
@@ -241,3 +270,5 @@ export const OPTIONS = handle
 export const dynamic = 'force-dynamic'
 
 export const runtime = 'nodejs'
+// Room for primary attempt + a cold-starting backup within one invocation.
+export const maxDuration = 60

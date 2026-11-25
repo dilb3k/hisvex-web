@@ -81,10 +81,10 @@ test('account switch during a flush cannot send the next record under the new ac
 })
 
 const proxySource=transpile('src/app/api/[...path]/route.ts')
-function proxy(responses, signalFactory=AbortSignal) {
+function proxy(responses, signalFactory=AbortSignal, DateImpl) {
   const calls=[];const context={exports:{},require:name=>{if(name==='next/server') return require('next/server');throw Error(name)},
     process:{env:{BACKEND_PRIMARY_URL:'https://primary.test/api',BACKEND_BACKUP_URL:'https://backup.test/api'}},
-    Headers,Response,AbortSignal:signalFactory,TextDecoder,fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
+    Headers,Response,AbortSignal:signalFactory,TextDecoder,...(DateImpl?{Date:DateImpl}:{}),fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
   }
   vm.runInNewContext(proxySource,context)
   return {handlers:context.exports,calls}
@@ -156,14 +156,33 @@ test('a Railway platform 404 (Application not found body) fails over to backup e
   const p=proxy([new Response('Application not found',{status:404}),new Response('ok')])
   const result=await request(p,'GET');assert.equal(result.status,200);assert.equal(p.calls.length,2)
 })
-test('a 404 on a write request preserves its original outcome without automatic replay',async()=>{
-  const p=proxy([new Response('Application not found',{status:404})])
+test('a business 404 on a write is returned unchanged and never replayed',async()=>{
+  const p=proxy([new Response(JSON.stringify({success:false,error:{message:'Topilmadi'}}),{status:404})])
   const result=await request(p,'POST');assert.equal(result.status,404);assert.equal(p.calls.length,1)
 })
-test('platform write failure is not replayed; the next explicitly submitted request uses Render',async()=>{
+test('a Railway platform 404 on a write is replayed on Render because the app never saw it',async()=>{
  const p=proxy([new Response('Application not found',{status:404}),new Response('{"success":true,"data":{}}')]);
- assert.equal((await request(p,'POST',['procurements'])).status,404);assert.equal(p.calls.length,1);
- assert.equal((await request(p,'POST',['procurements'])).status,200);assert.equal(p.calls.length,2);assert.match(p.calls[1].url,/backup\.test/);
+ const result=await request(p,'POST',['procurements']);assert.equal(result.status,200);assert.equal(p.calls.length,2);assert.match(p.calls[1].url,/backup\.test/);
+ assert.equal(result.headers.get('x-hisvex-backend'),'backup')
+})
+test('a write that timed out on primary is never replayed (outcome unknown)',async()=>{
+ const p=proxy([Error('timed out'),new Response('would duplicate')]);
+ const result=await request(p,'POST',['procurements']);assert.equal(result.status,503);assert.equal(p.calls.length,1)
+})
+test('login is replayed on Render after a Railway gateway 503 or platform 404',async()=>{
+ for(const first of [new Response('down',{status:503}),new Response('Application not found',{status:404})]){
+  const p=proxy([first,new Response('{"success":true}')]);const result=await request(p,'POST',['auth','login'])
+  assert.equal(result.status,200);assert.equal(p.calls.length,2);assert.match(p.calls[1].url,/backup\.test/)}
+})
+test('after the cooldown lapses primary is probed on /health before real traffic returns',async()=>{
+ let offset=0;const realNow=Date.now.bind(Date);class FakeDate extends Date{static now(){return realNow()+offset}}
+ const p=proxy([new Response('Application not found',{status:404}),new Response('ok'),new Response('still down',{status:503}),new Response('ok2'),new Response('{}',{status:200}),new Response('primary ok')],AbortSignal,FakeDate)
+ await request(p,'GET');assert.equal(p.calls.length,2)
+ offset=61000
+ await request(p,'GET');assert.match(p.calls[2].url,/primary\.test\/api\/health$/);assert.match(p.calls[3].url,/backup\.test/)
+ offset=61000+16000
+ const last=await request(p,'GET');assert.match(p.calls[4].url,/primary\.test\/api\/health$/);assert.match(p.calls[5].url,/primary\.test\/api\/products/)
+ assert.equal(last.headers.get('x-hisvex-backend'),'primary')
 })
 
 

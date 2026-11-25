@@ -1,0 +1,21 @@
+# Render's free plan sleeps after ~15 minutes without traffic, and a cold
+# start takes up to a minute. This ping keeps the standby backend awake so
+# failover from Railway is instant. One always-on free service fits inside
+# Render's monthly free instance hours.
+name: keep-backup-warm
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping standby backend
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 --retry-delay 10 https://hisvex-api-cr2x.onrender.com/api/health
+      - name: Report primary status
+        run: |
+          code=$(curl --silent --output /dev/null --max-time 20 --write-out '%{http_code}' https://hisvex-api-production.up.railway.app/api/health || true)
+          echo "Primary (Railway) /api/health -> ${code:-no response}"
