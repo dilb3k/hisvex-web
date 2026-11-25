@@ -81,10 +81,10 @@ test('account switch during a flush cannot send the next record under the new ac
 })
 
 const proxySource=transpile('src/app/api/[...path]/route.ts')
-function proxy(responses, signalFactory=AbortSignal, DateImpl) {
+function proxy(responses, signalFactory=AbortSignal, DateImpl, rawProbe=false) {
   const calls=[];const context={exports:{},require:name=>{if(name==='next/server') return require('next/server');throw Error(name)},
     process:{env:{BACKEND_PRIMARY_URL:'https://primary.test/api',BACKEND_BACKUP_URL:'https://backup.test/api'}},
-    Headers,Response,AbortSignal:signalFactory,TextDecoder,...(DateImpl?{Date:DateImpl}:{}),fetch:async(url,options)=>{calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
+    Headers,Response,AbortSignal:signalFactory,TextDecoder,...(DateImpl?{Date:DateImpl}:{}),fetch:async(url,options)=>{if(!rawProbe&&url==='https://primary.test/api/health')return new Response('{}',{status:200});calls.push({url,method:options.method});const next=responses.shift();if(next instanceof Error)throw next;return next},
   }
   vm.runInNewContext(proxySource,context)
   return {handlers:context.exports,calls}
@@ -116,7 +116,7 @@ test('session login receives 30 seconds without retrying a timed-out POST',async
   for(const path of [['auth','login'],['auth','login','verify-phone'],['auth','verify-session-challenge']]) {
     const budgets=[];const p=proxy([Error('timed out'),new Response('must not replay')],{timeout:ms=>{budgets.push(ms);return AbortSignal.timeout(ms)}})
     const result=await request(p,'POST',path)
-    assert.equal(result.status,503);assert.deepEqual(budgets,[30000]);assert.equal(p.calls.length,1)
+    assert.equal(result.status,503);assert.deepEqual(budgets,[3000,30000]);assert.equal(p.calls.length,1)
   }
 })
 test('ordinary login and OTP verification client waits longer than the proxy budget',async()=>{
@@ -176,12 +176,12 @@ test('login is replayed on Render after a Railway gateway 503 or platform 404',a
 })
 test('after the cooldown lapses primary is probed on /health before real traffic returns',async()=>{
  let offset=0;const realNow=Date.now.bind(Date);class FakeDate extends Date{static now(){return realNow()+offset}}
- const p=proxy([new Response('Application not found',{status:404}),new Response('ok'),new Response('still down',{status:503}),new Response('ok2'),new Response('{}',{status:200}),new Response('primary ok')],AbortSignal,FakeDate)
- await request(p,'GET');assert.equal(p.calls.length,2)
+ const p=proxy([new Response('{}',{status:200}),new Response('Application not found',{status:404}),new Response('ok'),new Response('still down',{status:503}),new Response('ok2'),new Response('{}',{status:200}),new Response('primary ok')],AbortSignal,FakeDate,true)
+ await request(p,'GET');assert.equal(p.calls.length,3)
  offset=61000
- await request(p,'GET');assert.match(p.calls[2].url,/primary\.test\/api\/health$/);assert.match(p.calls[3].url,/backup\.test/)
+ await request(p,'GET');assert.match(p.calls[3].url,/primary\.test\/api\/health$/);assert.match(p.calls[4].url,/backup\.test/)
  offset=61000+16000
- const last=await request(p,'GET');assert.match(p.calls[4].url,/primary\.test\/api\/health$/);assert.match(p.calls[5].url,/primary\.test\/api\/products/)
+ const last=await request(p,'GET');assert.match(p.calls[5].url,/primary\.test\/api\/health$/);assert.match(p.calls[6].url,/primary\.test\/api\/products/)
  assert.equal(last.headers.get('x-hisvex-backend'),'primary')
 })
 
@@ -437,3 +437,10 @@ test('procurement analytics and atomic batches receive the heavy request timeout
  await h.api.get('/procurements/analytics');assert.equal(config.timeout,125000);
  await h.api.post('/procurements',{items:[]},{headers:{'Idempotency-Key':'test-procurement-timeout'}});assert.equal(config.timeout,125000);
 });
+
+test('a cold instance with a hanging primary answers from backup after a short probe, not the full timeout',async()=>{
+  const budgets=[];const p=proxy([new Error('probe timed out'),new Response('{"success":true}')],{timeout:ms=>{budgets.push(ms);return AbortSignal.timeout(ms)}},undefined,true)
+  const result=await request(p,'POST',['auth','login'])
+  assert.equal(result.status,200);assert.equal(result.headers.get('x-hisvex-backend'),'backup')
+  assert.deepEqual(budgets,[3000,45000]);assert.match(p.calls[0].url,/primary\.test\/api\/health$/);assert.match(p.calls[1].url,/backup\.test/)
+})

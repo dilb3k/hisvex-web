@@ -25,6 +25,11 @@ const PRIMARY_COOLDOWN_MS = 60_000
 // GET /health instead of risking a real user request on a dead host.
 const PRIMARY_PROBE_COOLDOWN_MS = 15_000
 const PRIMARY_PROBE_TIMEOUT_MS = 3000
+// A recent real success from primary vouches for it this long; past that (or
+// on a cold serverless instance that knows nothing) it is probed first, so a
+// hanging primary costs 3s instead of the full request timeout.
+const PRIMARY_TRUST_MS = 30_000
+let primaryHealthyUntil = 0
 // Render's free plan sleeps when idle; a cold start can take ~50s, so the
 // backup gets a longer budget than the primary.
 const BACKUP_MIN_TIMEOUT_MS = 45000
@@ -161,11 +166,14 @@ async function fetchWithFailover(
   const backupTimeoutMs = Math.max(timeoutMs, BACKUP_MIN_TIMEOUT_MS)
   let skipPrimary = Date.now() < primaryDownUntil
 
-  // Cooldown lapsed but primary was last seen down: confirm it is back
-  // before sending a real request, so users never wait on a dead primary.
-  if (!skipPrimary && primaryDownUntil !== 0) {
-    if (await probePrimary()) primaryDownUntil = 0
-    else {
+  // Primary was last seen down, or nothing recent vouches for it (cold
+  // instance): confirm it answers before sending a real request, so users
+  // never wait out the full timeout on a dead or hanging primary.
+  if (!skipPrimary && (primaryDownUntil !== 0 || Date.now() >= primaryHealthyUntil)) {
+    if (await probePrimary()) {
+      primaryDownUntil = 0
+      primaryHealthyUntil = Date.now() + PRIMARY_TRUST_MS
+    } else {
       primaryDownUntil = Date.now() + PRIMARY_PROBE_COOLDOWN_MS
       skipPrimary = true
     }
@@ -185,18 +193,22 @@ async function fetchWithFailover(
         // response is reconstructed from the buffered bytes instead of
         // re-reading the original (which would throw).
         primaryDownUntil = 0
+        primaryHealthyUntil = Date.now() + PRIMARY_TRUST_MS
         return { res: new Response(bodyBuf, { status: res.status, statusText: res.statusText, headers: res.headers }), usedBackup: false }
       }
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
+      primaryHealthyUntil = 0
       reportFailoverEvent(headers.get('authorization'))
       // The platform edge answered because no app instance exists, so the
       // application never saw this request: replaying it, even a write, on
       // the backup cannot duplicate anything.
     } else if (res && !isFailoverTriggeringStatus(res.status)) {
       primaryDownUntil = 0
+      primaryHealthyUntil = Date.now() + PRIMARY_TRUST_MS
       return { res, usedBackup: false }
     } else {
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
+      primaryHealthyUntil = 0
       // A login that got an explicit gateway rejection (502/503/504) was never
       // processed by the app, so it is safe to retry on backup. A timeout
       // (res === null) stays non-replayable: the primary may have handled it.
