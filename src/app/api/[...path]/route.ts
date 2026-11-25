@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // primary, Render backup) now only ever get called from this Node runtime;
 // the browser only ever talks to this same-origin /api/* path.
 const PRIMARY_URL = process.env.BACKEND_PRIMARY_URL || 'https://hisvex-api-production.up.railway.app/api'
-const BACKUP_URL = process.env.BACKEND_BACKUP_URL || 'https://comp-bar-server-bk7z.onrender.com/api'
+const BACKUP_URL = process.env.BACKEND_BACKUP_URL || 'https://hisvex-api-cr2x.onrender.com/api'
 
 const DEFAULT_TIMEOUT_MS = 10000
 const HEAVY_TIMEOUT_MS = 60000
@@ -167,7 +167,11 @@ async function fetchWithFailover(
       return { res, usedBackup: false }
     } else {
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
-      if (!replaySafe) return { res, usedBackup: false }
+      // A login that got an explicit gateway rejection (502/503/504) was never
+      // processed by the app, so it is safe to retry on backup. A timeout
+      // (res === null) stays non-replayable: the primary may have handled it.
+      const gatewayRejectedLogin = res !== null && isSessionLogin(path.split('?', 1)[0])
+      if (!replaySafe && !gatewayRejectedLogin) return { res, usedBackup: false }
       if (res?.body) await res.body.cancel().catch(() => {})
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
       reportFailoverEvent(headers.get('authorization'))
