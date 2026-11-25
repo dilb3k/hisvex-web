@@ -161,7 +161,8 @@ async function fetchWithFailover(
       }
       primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS
       reportFailoverEvent(headers.get('authorization'))
-      if (!replaySafe) return { res: new Response(bodyBuf, { status: res.status, statusText: res.statusText, headers: res.headers }), usedBackup: false }
+      // Platform 404 means the app never saw the request, so a login may retry.
+      if (!replaySafe && !isSessionLogin(path.split('?', 1)[0])) return { res: new Response(bodyBuf, { status: res.status, statusText: res.statusText, headers: res.headers }), usedBackup: false }
     } else if (res && !isFailoverTriggeringStatus(res.status)) {
       primaryDownUntil = 0
       return { res, usedBackup: false }
